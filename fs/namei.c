@@ -486,14 +486,14 @@ EXPORT_SYMBOL(path_put);
 
 #define EMBEDDED_LEVELS 2
 struct nameidata {
-	struct path	path;
-	struct qstr	last;
-	struct path	root;
-	struct inode	*inode; /* path.dentry.d_inode */
-	unsigned int	flags;
-	unsigned	seq, m_seq;
-	int		last_type;
-	unsigned	depth;
+	struct path	path;							// 当前搜索到的路径，例如/usr/local
+	struct qstr	last;							// 当前子路径名及其散列值，例如share
+	struct path	root;							// 根目录信息
+	struct inode	*inode; /* path.dentry.d_inode */			// 当前搜索到的路径对应目录项的inode，例如/usr/local
+	unsigned int	flags;							// 查找相关的标志位
+	unsigned	seq, m_seq;						// 相关目录项的顺序锁序号
+	int		last_type;						// 当前子路径类型，例如LAST_NORM
+	unsigned	depth;							// 解析符号链接过程中的递归深度
 	int		total_link_count;
 	struct saved {
 		struct path link;
@@ -501,7 +501,7 @@ struct nameidata {
 		const char *name;
 		unsigned seq;
 	} *stack, internal[EMBEDDED_LEVELS];
-	struct filename	*name;
+	struct filename	*name;							// 目标路径全名
 	struct nameidata *saved;
 	struct inode	*link_inode;
 	unsigned	root_seq;
@@ -2168,7 +2168,7 @@ static const char *path_init(struct nameidata *nd, unsigned flags)
 	if (flags & LOOKUP_RCU)
 		rcu_read_lock();
 
-	nd->last_type = LAST_ROOT; /* if there are only slashes... */
+	nd->last_type = LAST_ROOT; /* if there are only slashes... */		// 路径名中只有'/'，从ROOT开始查找
 	nd->flags = flags | LOOKUP_JUMPED | LOOKUP_PARENT;
 	nd->depth = 0;
 	if (flags & LOOKUP_ROOT) {
@@ -2193,28 +2193,28 @@ static const char *path_init(struct nameidata *nd, unsigned flags)
 	nd->path.dentry = NULL;
 
 	nd->m_seq = read_seqbegin(&mount_lock);
-	if (*s == '/') {
-		set_root(nd);
-		if (likely(!nd_jump_root(nd)))
+	if (*s == '/') {							// 如果是绝对路径查找
+		set_root(nd);							// 设置nd->root为当前进程的根目录
+		if (likely(!nd_jump_root(nd)))					// 将起始（当前）路径设置为nd->root
 			return s;
 		return ERR_PTR(-ECHILD);
-	} else if (nd->dfd == AT_FDCWD) {
+	} else if (nd->dfd == AT_FDCWD) {					// 如果是相对路径查找
 		if (flags & LOOKUP_RCU) {
 			struct fs_struct *fs = current->fs;
 			unsigned seq;
 
 			do {
 				seq = read_seqcount_begin(&fs->seq);
-				nd->path = fs->pwd;
+				nd->path = fs->pwd;				// 将起始（当前）路径设置为当前任务的工作目录（也即pwd）
 				nd->inode = nd->path.dentry->d_inode;
 				nd->seq = __read_seqcount_begin(&nd->path.dentry->d_seq);
 			} while (read_seqcount_retry(&fs->seq, seq));
 		} else {
-			get_fs_pwd(current->fs, &nd->path);
-			nd->inode = nd->path.dentry->d_inode;
+			get_fs_pwd(current->fs, &nd->path);			// 将起始（当前）路径设置为当前任务的工作目录（也即pwd）
+			nd->inode = nd->path.dentry->d_inode;			// 初始化当前目录项的inode
 		}
 		return s;
-	} else {
+	} else {								// 用户态路径可能存在错误
 		/* Caller must check execute permissions on the starting path component */
 		struct fd f = fdget_raw(nd->dfd);
 		struct dentry *dentry;
@@ -2231,11 +2231,11 @@ static const char *path_init(struct nameidata *nd, unsigned flags)
 
 		nd->path = f.file->f_path;
 		if (flags & LOOKUP_RCU) {
-			nd->inode = nd->path.dentry->d_inode;
+			nd->inode = nd->path.dentry->d_inode;			// 初始化当前目录项的inode
 			nd->seq = read_seqcount_begin(&nd->path.dentry->d_seq);
 		} else {
 			path_get(&nd->path);
-			nd->inode = nd->path.dentry->d_inode;
+			nd->inode = nd->path.dentry->d_inode;			// 初始化当前目录项的inode
 		}
 		fdput(f);
 		return s;
@@ -3131,10 +3131,10 @@ static int lookup_open(struct nameidata *nd, struct path *path,
 		return -ENOENT;
 
 	file->f_mode &= ~FMODE_CREATED;
-	dentry = d_lookup(dir, &nd->last);
+	dentry = d_lookup(dir, &nd->last);					// 目标查找dentry已经在内存中缓存则返回的dentry不为空
 	for (;;) {
 		if (!dentry) {
-			dentry = d_alloc_parallel(dir, &nd->last, &wq);
+			dentry = d_alloc_parallel(dir, &nd->last, &wq);		// 在内存为对应目标文件申请dentry
 			if (IS_ERR(dentry))
 				return PTR_ERR(dentry);
 		}
@@ -3201,7 +3201,7 @@ static int lookup_open(struct nameidata *nd, struct path *path,
 no_open:
 	if (d_in_lookup(dentry)) {
 		struct dentry *res = dir_inode->i_op->lookup(dir_inode, dentry,
-							     nd->flags);
+							     nd->flags);	// 在具体文件系统找到dir_inode目录下对应内存dentry的具体文件系统的fs_dentry，并关联fs_dentry和dentry
 		d_lookup_done(dentry);
 		if (unlikely(res)) {
 			if (IS_ERR(res)) {
@@ -3214,14 +3214,14 @@ no_open:
 	}
 
 	/* Negative dentry, just create the file */
-	if (!dentry->d_inode && (open_flag & O_CREAT)) {
+	if (!dentry->d_inode && (open_flag & O_CREAT)) {			// 这个dentry实际上没有真实的文件对应，但用户态设立了O_CREAT选项
 		file->f_mode |= FMODE_CREATED;
 		audit_inode_child(dir_inode, dentry, AUDIT_TYPE_CHILD_CREATE);
 		if (!dir_inode->i_op->create) {
 			error = -EACCES;
 			goto out_dput;
 		}
-		error = dir_inode->i_op->create(dir_inode, dentry, mode,
+		error = dir_inode->i_op->create(dir_inode, dentry, mode,	// 在目录dir下创建对应dentry的文件，在具体文件系统下申请inode绑定inode到dentry
 						open_flag & O_EXCL);
 		if (error)
 			goto out_dput;
@@ -3232,7 +3232,7 @@ no_open:
 		goto out_dput;
 	}
 out_no_open:
-	path->dentry = dentry;
+	path->dentry = dentry;							// 执行成功，填充目标dentry到path->dentry
 	path->mnt = nd->path.mnt;
 	return 0;
 
@@ -3247,14 +3247,14 @@ out_dput:
 static int do_last(struct nameidata *nd,
 		   struct file *file, const struct open_flags *op)
 {
-	struct dentry *dir = nd->path.dentry;
+	struct dentry *dir = nd->path.dentry;					// 最终查找目标所在的目录对应的dentry
 	int open_flag = op->open_flag;
 	bool will_truncate = (open_flag & O_TRUNC) != 0;
 	bool got_write = false;
 	int acc_mode = op->acc_mode;
 	unsigned seq;
 	struct inode *inode;
-	struct path path;
+	struct path path;							// path内容没有初始化
 	int error;
 
 	nd->flags &= ~LOOKUP_PARENT;
@@ -3267,11 +3267,11 @@ static int do_last(struct nameidata *nd,
 		goto finish_open;
 	}
 
-	if (!(open_flag & O_CREAT)) {
+	if (!(open_flag & O_CREAT)) {						// 最终查找目标没有打开创建标记
 		if (nd->last.name[nd->last.len])
 			nd->flags |= LOOKUP_FOLLOW | LOOKUP_DIRECTORY;
 		/* we _can_ be in RCU mode here */
-		error = lookup_fast(nd, &path, &inode, &seq);
+		error = lookup_fast(nd, &path, &inode, &seq);			// path和inode指向最终目标，nd->path和nd->inode仍旧指向最终目标的父目录
 		if (likely(error > 0))
 			goto finish_lookup;
 
@@ -3280,7 +3280,7 @@ static int do_last(struct nameidata *nd,
 
 		BUG_ON(nd->inode != dir->d_inode);
 		BUG_ON(nd->flags & LOOKUP_RCU);
-	} else {
+	} else {								// 最终查找目标有打开创建标记
 		/* create side of things */
 		/*
 		 * This will *only* deal with leaving RCU mode - LOOKUP_JUMPED
@@ -3311,7 +3311,7 @@ static int do_last(struct nameidata *nd,
 		inode_lock(dir->d_inode);
 	else
 		inode_lock_shared(dir->d_inode);
-	error = lookup_open(nd, &path, file, op, got_write);
+	error = lookup_open(nd, &path, file, op, got_write);			// 打开最终文件
 	if (open_flag & O_CREAT)
 		inode_unlock(dir->d_inode);
 	else
@@ -3334,7 +3334,7 @@ static int do_last(struct nameidata *nd,
 		open_flag &= ~O_TRUNC;
 		will_truncate = false;
 		acc_mode = 0;
-		path_to_nameidata(&path, nd);
+		path_to_nameidata(&path, nd);					// 将path内容赋值给nd->path
 		goto finish_open_created;
 	}
 
@@ -3511,7 +3511,7 @@ static struct file *path_openat(struct nameidata *nd,
 	struct file *file;
 	int error;
 
-	file = alloc_empty_file(op->open_flag, current_cred());
+	file = alloc_empty_file(op->open_flag, current_cred());			// 分配一个空的file结构体，对最大文件数量进行检查
 	if (IS_ERR(file))
 		return file;
 
@@ -3520,9 +3520,9 @@ static struct file *path_openat(struct nameidata *nd,
 	} else if (unlikely(file->f_flags & O_PATH)) {
 		error = do_o_path(nd, flags, file);
 	} else {
-		const char *s = path_init(nd, flags);
-		while (!(error = link_path_walk(s, nd)) &&
-			(error = do_last(nd, file, op)) > 0) {
+		const char *s = path_init(nd, flags);				// 初始化nd
+		while (!(error = link_path_walk(s, nd)) &&			// 遍历路径，直到找到目标目录项的父目录项。执行完之后，nd->path和nd->inode指向最终目标的父目录，nd->last是最终目标的子路径名。例如/usr/local/share，nd->path/nd->inode指向/usr/local，nd->last是share
+			(error = do_last(nd, file, op)) > 0) {			// 在最终目标所在目录中做最后的工作
 			nd->flags &= ~(LOOKUP_OPEN|LOOKUP_CREATE|LOOKUP_EXCL);
 			s = trailing_symlink(nd);
 		}
@@ -3547,16 +3547,16 @@ static struct file *path_openat(struct nameidata *nd,
 struct file *do_filp_open(int dfd, struct filename *pathname,
 		const struct open_flags *op)
 {
-	struct nameidata nd;
+	struct nameidata nd;							// 文件路经查找遍历用到的临时数据结构，存放遍历路径的中间结果
 	int flags = op->lookup_flags;
 	struct file *filp;
 
 	set_nameidata(&nd, dfd, pathname);
-	filp = path_openat(&nd, op, flags | LOOKUP_RCU);
+	filp = path_openat(&nd, op, flags | LOOKUP_RCU);			// 路经查找并打开文件，RCU-walk模式禁止抢占，不可能出现进程阻塞，效率很高
 	if (unlikely(filp == ERR_PTR(-ECHILD)))
-		filp = path_openat(&nd, op, flags);
+		filp = path_openat(&nd, op, flags);				// RCU模式打开失败，使用Ref-walk模式，任务可能会睡眠，效率低
 	if (unlikely(filp == ERR_PTR(-ESTALE)))
-		filp = path_openat(&nd, op, flags | LOOKUP_REVAL);
+		filp = path_openat(&nd, op, flags | LOOKUP_REVAL);		// 打开的文件是过期的，很少有文件系统走到这里，例如NFS
 	restore_nameidata();
 	return filp;
 }

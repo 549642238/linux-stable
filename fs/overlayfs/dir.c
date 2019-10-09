@@ -241,7 +241,7 @@ static int ovl_instantiate(struct dentry *dentry, struct inode *inode,
 		.newinode = inode,
 	};
 
-	ovl_dir_modified(dentry->d_parent, false);					// 父目录对应inode的mtime/ctime更新，父目录目录项版本号更新
+	ovl_dir_modified(dentry->d_parent, false);				// 父目录对应inode的mtime/ctime更新，父目录目录项版本号更新
 	ovl_dentry_set_upper_alias(dentry);
 	if (!hardlink) {
 		/*
@@ -256,7 +256,7 @@ static int ovl_instantiate(struct dentry *dentry, struct inode *inode,
 		 * d_instantiate_new() here to prevent from creating two
 		 * hashed directory inode aliases.
 		 */
-		inode = ovl_get_inode(dentry->d_sb, &oip);				// 设置inode对应ovl_inode的__upperdentry为newdentry，设置inode->i_private为newdentry的inode，inode加入全局哈希表
+		inode = ovl_get_inode(dentry->d_sb, &oip);			// 设置inode对应ovl_inode的__upperdentry为newdentry，设置inode->i_private为newdentry的inode，inode加入全局哈希表
 		if (IS_ERR(inode))
 			return PTR_ERR(inode);
 	} else {
@@ -265,7 +265,7 @@ static int ovl_instantiate(struct dentry *dentry, struct inode *inode,
 		inc_nlink(inode);
 	}
 
-	d_instantiate(dentry, inode);							// 绑定inode和dentry之间的关系，包括dentry->d_inode=inode、inode->i_dentry加入dentry->d_alias
+	d_instantiate(dentry, inode);						// 绑定inode和dentry之间的关系，包括dentry->d_inode=inode、inode->i_dentry加入dentry->d_alias
 	if (inode != oip.newinode) {
 		pr_warn_ratelimited("overlayfs: newly created inode found in cache (%pd2)\n",
 				    dentry);
@@ -291,8 +291,8 @@ static bool ovl_type_origin(struct dentry *dentry)
 static int ovl_create_upper(struct dentry *dentry, struct inode *inode,
 			    struct ovl_cattr *attr)
 {
-	struct dentry *upperdir = ovl_dentry_upper(dentry->d_parent);			// 获取新文件的父目录在upper层的目录项
-	struct inode *udir = upperdir->d_inode;						// 获取新文件的父目录在upper层的inode
+	struct dentry *upperdir = ovl_dentry_upper(dentry->d_parent);		// 获取新文件的父目录在upper层的目录项
+	struct inode *udir = upperdir->d_inode;					// 获取新文件的父目录在upper层的inode
 	struct dentry *newdentry;
 	int err;
 
@@ -300,8 +300,8 @@ static int ovl_create_upper(struct dentry *dentry, struct inode *inode,
 		attr->mode &= ~current_umask();
 
 	inode_lock_nested(udir, I_MUTEX_PARENT);
-	newdentry = ovl_create_real(udir,						// 在upper层父目录udir下创建newdentry目录项对应的文件，会调用具体文件系统的i_op->create接口
-				    lookup_one_len(dentry->d_name.name,			// 根据文件名检索upper层父目录下的目录项，必要时创建
+	newdentry = ovl_create_real(udir,					// 在upper层父目录udir下创建newdentry目录项对应的文件，会调用具体文件系统的i_op->create接口
+				    lookup_one_len(dentry->d_name.name,		// 根据文件名检索upper层父目录下的目录项，必要时创建
 						   upperdir,
 						   dentry->d_name.len),
 				    attr);
@@ -314,7 +314,7 @@ static int ovl_create_upper(struct dentry *dentry, struct inode *inode,
 		ovl_set_opaque(dentry, newdentry);
 	}
 
-	err = ovl_instantiate(dentry, inode, newdentry, !!attr->hardlink);		// 实例化inode和dentry，绑定二者关系
+	err = ovl_instantiate(dentry, inode, newdentry, !!attr->hardlink);	// 实例化inode和dentry，绑定二者关系
 	if (err)
 		goto out_cleanup;
 out_unlock:
@@ -429,10 +429,10 @@ out_free:
 static int ovl_create_over_whiteout(struct dentry *dentry, struct inode *inode,
 				    struct ovl_cattr *cattr)
 {
-	struct dentry *workdir = ovl_workdir(dentry);					// 获取工作目录dentry
-	struct inode *wdir = workdir->d_inode;						// 获取工作目录inode
-	struct dentry *upperdir = ovl_dentry_upper(dentry->d_parent);			// 获取新文件的父目录在upper层的目录项
-	struct inode *udir = upperdir->d_inode;						// 获取新文件的父目录在upper层的inode
+	struct dentry *workdir = ovl_workdir(dentry);				// 获取工作目录dentry
+	struct inode *wdir = workdir->d_inode;					// 获取工作目录inode
+	struct dentry *upperdir = ovl_dentry_upper(dentry->d_parent);		// 获取新文件的父目录在upper层的目录项
+	struct inode *udir = upperdir->d_inode;					// 获取新文件的父目录在upper层的inode
 	struct dentry *upper;
 	struct dentry *newdentry;
 	int err;
@@ -453,7 +453,7 @@ static int ovl_create_over_whiteout(struct dentry *dentry, struct inode *inode,
 	if (err)
 		goto out;
 
-	upper = lookup_one_len(dentry->d_name.name, upperdir,				// 根据文件名检索upper层父目录下的目录项，必要时创建
+	upper = lookup_one_len(dentry->d_name.name, upperdir,			// 根据文件名检索upper层父目录下的目录项，必要时创建
 			       dentry->d_name.len);
 	err = PTR_ERR(upper);
 	if (IS_ERR(upper))
@@ -463,7 +463,7 @@ static int ovl_create_over_whiteout(struct dentry *dentry, struct inode *inode,
 	if (d_is_negative(upper) || !IS_WHITEOUT(d_inode(upper)))
 		goto out_dput;
 
-	newdentry = ovl_create_temp(workdir, cattr);					// 为目标文件在工作目录下找到一个newdentry。在工作目录父目录wdir下创建newdentry目录项对应的文件，会调用具体文件系统的i_op->create接口
+	newdentry = ovl_create_temp(workdir, cattr);				// 为目标文件在工作目录下找到一个newdentry。在工作目录父目录wdir下创建newdentry目录项对应的文件，会调用具体文件系统的i_op->create接口
 	err = PTR_ERR(newdentry);
 	if (IS_ERR(newdentry))
 		goto out_dput;
@@ -501,18 +501,18 @@ static int ovl_create_over_whiteout(struct dentry *dentry, struct inode *inode,
 		if (err)
 			goto out_cleanup;
 
-		err = ovl_do_rename(wdir, newdentry, udir, upper,			// copy-up，使用工作目录下的父目录inode[wdir]和新建目录项[newdentry]替换掉upper层的父目录inode[udir]和目标文件的dentry[upper]
+		err = ovl_do_rename(wdir, newdentry, udir, upper,		// copy-up，使用工作目录下的父目录inode[wdir]和新建目录项[newdentry]替换掉upper层的父目录inode[udir]和目标文件的dentry[upper]
 				    RENAME_EXCHANGE);
 		if (err)
 			goto out_cleanup;
 
 		ovl_cleanup(wdir, upper);
 	} else {
-		err = ovl_do_rename(wdir, newdentry, udir, upper, 0);			// copy-up，使用工作目录下的父目录inode[wdir]和新建目录项[newdentry]替换掉upper层的父目录inode[udir]和目标文件的dentry[upper]
+		err = ovl_do_rename(wdir, newdentry, udir, upper, 0);		// copy-up，使用工作目录下的父目录inode[wdir]和新建目录项[newdentry]替换掉upper层的父目录inode[udir]和目标文件的dentry[upper]
 		if (err)
 			goto out_cleanup;
 	}
-	err = ovl_instantiate(dentry, inode, newdentry, hardlink);			// 实例化inode和dentry，绑定二者关系
+	err = ovl_instantiate(dentry, inode, newdentry, hardlink);		// 实例化inode和dentry，绑定二者关系
 	if (err)
 		goto out_cleanup;
 out_dput:
@@ -540,7 +540,7 @@ static int ovl_create_or_link(struct dentry *dentry, struct inode *inode,
 	struct cred *override_cred;
 	struct dentry *parent = dentry->d_parent;
 
-	err = ovl_copy_up(parent);							// 如果dentry的父目录在low层，对来自low层的父目录在upper层递归进行copy_up
+	err = ovl_copy_up(parent);						// 如果dentry的父目录在low层，对来自low层的父目录在upper层递归进行copy_up
 	if (err)
 		return err;
 
@@ -574,9 +574,9 @@ static int ovl_create_or_link(struct dentry *dentry, struct inode *inode,
 		put_cred(override_cred);
 
 		if (!ovl_dentry_is_whiteout(dentry))
-			err = ovl_create_upper(dentry, inode, attr);			// 普通创建文件/目录流程
+			err = ovl_create_upper(dentry, inode, attr);		// 普通创建文件/目录流程
 		else
-			err = ovl_create_over_whiteout(dentry, inode, attr);		// 在一个opaque目录上创建文件/目录
+			err = ovl_create_over_whiteout(dentry, inode, attr);	// 在一个opaque目录上创建文件/目录
 	}
 out_revert_creds:
 	revert_creds(old_cred);
@@ -593,13 +593,13 @@ static int ovl_create_object(struct dentry *dentry, int mode, dev_t rdev,
 		.link = link,
 	};
 
-	err = ovl_want_write(dentry);							// 获取写操作执行权，主要更新写引用计数，如果是只读则返回错误
+	err = ovl_want_write(dentry);						// 获取写操作执行权，主要更新写引用计数，如果是只读则返回错误
 	if (err)
 		goto out;
 
 	/* Preallocate inode to be used by ovl_get_inode() */
 	err = -ENOMEM;
-	inode = ovl_new_inode(dentry->d_sb, mode, rdev);				// 申请inode并做部分初始化，包括i_ino、i_op、i_flags等
+	inode = ovl_new_inode(dentry->d_sb, mode, rdev);			// 申请inode并做部分初始化，包括i_ino、i_op、i_flags等
 	if (!inode)
 		goto out_drop_write;
 
@@ -607,16 +607,16 @@ static int ovl_create_object(struct dentry *dentry, int mode, dev_t rdev,
 	inode->i_state |= I_CREATING;
 	spin_unlock(&inode->i_lock);
 
-	inode_init_owner(inode, dentry->d_parent->d_inode, mode);			// 初始化i_mode
+	inode_init_owner(inode, dentry->d_parent->d_inode, mode);		// 初始化i_mode
 	attr.mode = inode->i_mode;
 
-	err = ovl_create_or_link(dentry, inode, &attr, false);				// 填充inode数据项，关联inode和dentry
+	err = ovl_create_or_link(dentry, inode, &attr, false);			// 填充inode数据项，关联inode和dentry
 	/* Did we end up using the preallocated inode? */
 	if (inode != d_inode(dentry))
 		iput(inode);
 
 out_drop_write:
-	ovl_drop_write(dentry);								// 释放写操作
+	ovl_drop_write(dentry);							// 释放写操作
 out:
 	return err;
 }
