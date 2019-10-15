@@ -200,7 +200,7 @@ static int ovl_lookup_single(struct dentry *base, struct ovl_lookup_data *d,
 	int err;
 	bool last_element = !post[0];
 
-	this = lookup_one_len_unlocked(name, base, namelen);
+	this = lookup_one_len_unlocked(name, base, namelen);			// 根据文件名name在目录base下找到对应的dentry文件并放在返回值中
 	if (IS_ERR(this)) {
 		err = PTR_ERR(this);
 		this = NULL;
@@ -286,7 +286,7 @@ static int ovl_lookup_layer(struct dentry *base, struct ovl_lookup_data *d,
 	int err;
 
 	if (d->name.name[0] != '/')
-		return ovl_lookup_single(base, d, d->name.name, d->name.len,
+		return ovl_lookup_single(base, d, d->name.name, d->name.len,	// 根据文件名d->name.name在目录base下找到对应的dentry并放在ret中
 					 0, "", ret);
 
 	while (!IS_ERR_OR_NULL(base) && d_can_lookup(base)) {
@@ -364,7 +364,7 @@ invalid:
 static int ovl_check_origin(struct ovl_fs *ofs, struct dentry *upperdentry,
 			    struct ovl_path **stackp, unsigned int *ctrp)
 {
-	struct ovl_fh *fh = ovl_get_fh(upperdentry, OVL_XATTR_ORIGIN);
+	struct ovl_fh *fh = ovl_get_fh(upperdentry, OVL_XATTR_ORIGIN);		// 如果upperdentry对应的文件存在于lower层，但lower层文件系统超级块不支持s_export_op->fh_to_dentry操作，fh会返回NULL
 	int err;
 
 	if (IS_ERR_OR_NULL(fh))
@@ -803,13 +803,13 @@ static int ovl_fix_origin(struct dentry *dentry, struct dentry *lower,
 }
 
 struct dentry *ovl_lookup(struct inode *dir, struct dentry *dentry,
-			  unsigned int flags)
+			  unsigned int flags)					// 在父目录dir下找到目标文件dentry，成功返回NULL，失败返回指向error code的指针
 {
 	struct ovl_entry *oe;
 	const struct cred *old_cred;
 	struct ovl_fs *ofs = dentry->d_sb->s_fs_info;
-	struct ovl_entry *poe = dentry->d_parent->d_fsdata;
-	struct ovl_entry *roe = dentry->d_sb->s_root->d_fsdata;
+	struct ovl_entry *poe = dentry->d_parent->d_fsdata;			// dentry父目录的ovl_dentry
+	struct ovl_entry *roe = dentry->d_sb->s_root->d_fsdata;			// dentry所在文件系统实例的根目录的ovl_dentry
 	struct ovl_path *stack = NULL, *origin_path = NULL;
 	struct dentry *upperdir, *upperdentry = NULL;
 	struct dentry *origin = NULL;
@@ -837,9 +837,9 @@ struct dentry *ovl_lookup(struct inode *dir, struct dentry *dentry,
 		return ERR_PTR(-ENAMETOOLONG);
 
 	old_cred = ovl_override_creds(dentry->d_sb);
-	upperdir = ovl_dentry_upper(dentry->d_parent);
-	if (upperdir) {
-		err = ovl_lookup_layer(upperdir, &d, &upperdentry);
+	upperdir = ovl_dentry_upper(dentry->d_parent);				// dentry父目录在upper层中的dentry
+	if (upperdir) {								// 如果dentry父目录在upper层中存在
+		err = ovl_lookup_layer(upperdir, &d, &upperdentry);		// 在upper层父目录upperdir寻找d->name对应的文件，如果找到upperdentry指向upper层目标文件dentry
 		if (err)
 			goto out;
 
@@ -848,7 +848,7 @@ struct dentry *ovl_lookup(struct inode *dir, struct dentry *dentry,
 			err = -EREMOTE;
 			goto out;
 		}
-		if (upperdentry && !d.is_dir) {
+		if (upperdentry && !d.is_dir) {					// 如果upperdentry存在并且不是目录
 			unsigned int origin_ctr = 0;
 
 			/*
@@ -861,7 +861,7 @@ struct dentry *ovl_lookup(struct inode *dir, struct dentry *dentry,
 			 * number - it's the same as if we held a reference
 			 * to a dentry in lower layer that was moved under us.
 			 */
-			err = ovl_check_origin(ofs, upperdentry, &origin_path,
+			err = ovl_check_origin(ofs, upperdentry, &origin_path,	// 如果lower层存在对应文件，origin_path会被赋值并且origin_ctr=1
 					       &origin_ctr);
 			if (err)
 				goto out_put_upper;
@@ -890,14 +890,14 @@ struct dentry *ovl_lookup(struct inode *dir, struct dentry *dentry,
 	}
 
 	for (i = 0; !d.stop && i < poe->numlower; i++) {
-		struct ovl_path lower = poe->lowerstack[i];
+		struct ovl_path lower = poe->lowerstack[i];			// 在包含目标文件父目录的所有lower层中
 
 		if (!ofs->config.redirect_follow)
 			d.last = i == poe->numlower - 1;
 		else
 			d.last = lower.layer->idx == roe->numlower;
 
-		err = ovl_lookup_layer(lower.dentry, &d, &this);
+		err = ovl_lookup_layer(lower.dentry, &d, &this);		// 对每个lower层的目标文件父目录逐个查找，如果目标文件存在this会被赋值成目标文件在lower层的dentry
 		if (err)
 			goto out_put;
 
@@ -1026,7 +1026,7 @@ struct dentry *ovl_lookup(struct inode *dir, struct dentry *dentry,
 
 	if (origin && ovl_indexdir(dentry->d_sb) &&
 	    (!d.is_dir || ovl_index_all(dentry->d_sb))) {
-		index = ovl_lookup_index(ofs, upperdentry, origin, true);
+		index = ovl_lookup_index(ofs, upperdentry, origin, true);	// 验证lower层和upper层对应的目标文件是一致的，文件可能是从lower层copy-up到upper层
 		if (IS_ERR(index)) {
 			err = PTR_ERR(index);
 			index = NULL;
@@ -1034,7 +1034,7 @@ struct dentry *ovl_lookup(struct inode *dir, struct dentry *dentry,
 		}
 	}
 
-	oe = ovl_alloc_entry(ctr);
+	oe = ovl_alloc_entry(ctr);						// 为目标文件申请ovl_dentry，ctr是vol_dentry的numlower
 	err = -ENOMEM;
 	if (!oe)
 		goto out_put;
@@ -1057,7 +1057,7 @@ struct dentry *ovl_lookup(struct inode *dir, struct dentry *dentry,
 		}
 	}
 
-	if (upperdentry || ctr) {
+	if (upperdentry || ctr) {						// 目标文件在upper层或lower层已找到
 		struct ovl_inode_params oip = {
 			.upperdentry = upperdentry,
 			.lowerpath = stack,
@@ -1068,7 +1068,7 @@ struct dentry *ovl_lookup(struct inode *dir, struct dentry *dentry,
 				      stack[ctr - 1].dentry : NULL,
 		};
 
-		inode = ovl_get_inode(dentry->d_sb, &oip);
+		inode = ovl_get_inode(dentry->d_sb, &oip);			// 申请inode创建和dentry的绑定关系
 		err = PTR_ERR(inode);
 		if (IS_ERR(inode))
 			goto out_free_oe;

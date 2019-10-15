@@ -120,23 +120,23 @@ bool ovl_dentry_weird(struct dentry *dentry)
 enum ovl_path_type ovl_path_type(struct dentry *dentry)
 {
 	struct ovl_entry *oe = dentry->d_fsdata;
-	enum ovl_path_type type = 0;
+	enum ovl_path_type type = 0;						// [000] 该文件只存在于一个lower层
 
-	if (ovl_dentry_upper(dentry)) {
-		type = __OVL_PATH_UPPER;
+	if (ovl_dentry_upper(dentry)) {						// 该文件在upper层存在
+		type = __OVL_PATH_UPPER;					// [001] 该文件只在upper层存在
 
 		/*
 		 * Non-dir dentry can hold lower dentry of its copy up origin.
 		 */
-		if (oe->numlower) {
+		if (oe->numlower) {						// [101] 该文件在lower层也存在，可能是从lower层copy-up到upper层
 			if (ovl_test_flag(OVL_CONST_INO, d_inode(dentry)))
 				type |= __OVL_PATH_ORIGIN;
 			if (d_is_dir(dentry) ||
-			    !ovl_has_upperdata(d_inode(dentry)))
+			    !ovl_has_upperdata(d_inode(dentry)))		// [111] 该文件是目录，同名目录要合并，要和普通文件上下层覆盖区别对待
 				type |= __OVL_PATH_MERGE;
 		}
 	} else {
-		if (oe->numlower > 1)
+		if (oe->numlower > 1)						// [010] 该文件存在于多个lower层
 			type |= __OVL_PATH_MERGE;
 	}
 	return type;
@@ -176,12 +176,12 @@ void ovl_path_lowerdata(struct dentry *dentry, struct path *path)
 
 enum ovl_path_type ovl_path_real(struct dentry *dentry, struct path *path)
 {
-	enum ovl_path_type type = ovl_path_type(dentry);
+	enum ovl_path_type type = ovl_path_type(dentry);			// 获取dentry文件对应的类型（upper层和lower层存在情况以及是不是copy-up文件）
 
-	if (!OVL_TYPE_UPPER(type))
-		ovl_path_lower(dentry, path);
-	else
-		ovl_path_upper(dentry, path);
+	if (!OVL_TYPE_UPPER(type))						// 该文件在upper层不存在
+		ovl_path_lower(dentry, path);					// 将第一个lower层的dentry和vfsmount赋值给path
+	else									// 该文件在upper层存在
+		ovl_path_upper(dentry, path);					// 将upper层dentry和对应超级块的具体文件系统实例赋值给path
 
 	return type;
 }

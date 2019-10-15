@@ -79,9 +79,9 @@ int vfs_getattr_nosec(const struct path *path, struct kstat *stat,
 
 	if (inode->i_op->getattr)
 		return inode->i_op->getattr(path, stat, request_mask,
-					    query_flags);
+					    query_flags);			// 调用具体文件系统i_op->getattr获取其在文件系统实例path->mnt下对应path->dentry的文件属性
 
-	generic_fillattr(inode, stat);
+	generic_fillattr(inode, stat);						// 如果具体文件系统inode->i_op没有getattr实现，调用通用方法generic_fillattr直接用path->dentry->d_inode属性赋值stat
 	return 0;
 }
 EXPORT_SYMBOL(vfs_getattr_nosec);
@@ -115,7 +115,7 @@ int vfs_getattr(const struct path *path, struct kstat *stat,
 	retval = security_inode_getattr(path);
 	if (retval)
 		return retval;
-	return vfs_getattr_nosec(path, stat, request_mask, query_flags);
+	return vfs_getattr_nosec(path, stat, request_mask, query_flags);	// 以非安全模式获取path对应文件的属性，填充stat
 }
 EXPORT_SYMBOL(vfs_getattr);
 
@@ -184,11 +184,11 @@ int vfs_statx(int dfd, const char __user *filename, int flags,
 		lookup_flags |= LOOKUP_EMPTY;
 
 retry:
-	error = user_path_at(dfd, filename, lookup_flags, &path);
+	error = user_path_at(dfd, filename, lookup_flags, &path);		// 将用户态路径名filename查找对应的文件并转换成内核文件表示path(vfsmount/dentry/inode)
 	if (error)
 		goto out;
 
-	error = vfs_getattr(&path, stat, request_mask, flags);
+	error = vfs_getattr(&path, stat, request_mask, flags);			// 获取path中dentry对应inode的属性，并存放在stat结构中
 	path_put(&path);
 	if (retry_estale(error, lookup_flags)) {
 		lookup_flags |= LOOKUP_REVAL;
@@ -257,16 +257,16 @@ SYSCALL_DEFINE2(stat, const char __user *, filename,
 }
 
 SYSCALL_DEFINE2(lstat, const char __user *, filename,
-		struct __old_kernel_stat __user *, statbuf)
+		struct __old_kernel_stat __user *, statbuf)			// ls 非目录文件的系统调用接口，ls -d的系统调用接口
 {
 	struct kstat stat;
 	int error;
 
-	error = vfs_lstat(filename, &stat);
+	error = vfs_lstat(filename, &stat);					// 获取文件属性
 	if (error)
 		return error;
 
-	return cp_old_stat(&stat, statbuf);
+	return cp_old_stat(&stat, statbuf);					// 拷贝文件属性数据'stat'到用户态内存'statbuf'
 }
 
 SYSCALL_DEFINE2(fstat, unsigned int, fd, struct __old_kernel_stat __user *, statbuf)

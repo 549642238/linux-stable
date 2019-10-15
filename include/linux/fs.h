@@ -3239,7 +3239,7 @@ static inline int vfs_stat(const char __user *filename, struct kstat *stat)
 }
 static inline int vfs_lstat(const char __user *name, struct kstat *stat)
 {
-	return vfs_statx(AT_FDCWD, name, AT_SYMLINK_NOFOLLOW | AT_NO_AUTOMOUNT,
+	return vfs_statx(AT_FDCWD, name, AT_SYMLINK_NOFOLLOW | AT_NO_AUTOMOUNT,	// 获取对应路径'name'文件的属性，填充stat
 			 stat, STATX_BASIC_STATS);
 }
 static inline int vfs_fstatat(int dfd, const char __user *filename,

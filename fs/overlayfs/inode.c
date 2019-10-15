@@ -139,7 +139,7 @@ static int ovl_map_dev_ino(struct dentry *dentry, struct kstat *stat,
 }
 
 int ovl_getattr(const struct path *path, struct kstat *stat,
-		u32 request_mask, unsigned int flags)
+		u32 request_mask, unsigned int flags)				// 获取某个文件path(包括dentry和vfsmount信息)的属性，填充stat
 {
 	struct dentry *dentry = path->dentry;
 	enum ovl_path_type type;
@@ -153,9 +153,9 @@ int ovl_getattr(const struct path *path, struct kstat *stat,
 
 	metacopy_blocks = ovl_is_metacopy_dentry(dentry);
 
-	type = ovl_path_real(dentry, &realpath);
+	type = ovl_path_real(dentry, &realpath);				// 如果文件在upper层存在，则realpath指向upper层文件，否则realpath指向第一个lower层文件，返回值type表明了文件在upper层和lower层的存在情况（以及是不是copy-up文件）
 	old_cred = ovl_override_creds(dentry->d_sb);
-	err = vfs_getattr(&realpath, stat, request_mask, flags);
+	err = vfs_getattr(&realpath, stat, request_mask, flags);		// 在具体文件系统获取realpath属性并填充stat
 	if (err)
 		goto out;
 
@@ -168,16 +168,16 @@ int ovl_getattr(const struct path *path, struct kstat *stat,
 	 * If lower filesystem supports NFS file handles, this also guaranties
 	 * persistent st_ino across mount cycle.
 	 */
-	if (!is_dir || samefs || ovl_xino_bits(dentry->d_sb)) {
-		if (!OVL_TYPE_UPPER(type)) {
+	if (!is_dir || samefs || ovl_xino_bits(dentry->d_sb)) {			// 如果文件不是目录或者所有层超级块都一样
+		if (!OVL_TYPE_UPPER(type)) {					// 文件不在upper层
 			lower_layer = ovl_layer_lower(dentry);
-		} else if (OVL_TYPE_ORIGIN(type)) {
+		} else if (OVL_TYPE_ORIGIN(type)) {				// 文件在upper层，是从lower层copy-up过来的
 			struct kstat lowerstat;
 			u32 lowermask = STATX_INO | STATX_BLOCKS |
 					(!is_dir ? STATX_NLINK : 0);
 
-			ovl_path_lower(dentry, &realpath);
-			err = vfs_getattr(&realpath, &lowerstat,
+			ovl_path_lower(dentry, &realpath);			// 将realpath指向第一个lower层的文件
+			err = vfs_getattr(&realpath, &lowerstat,		// 在第一个lower层的具体文件系统获取realpath属性并填充lowerstat
 					  lowermask, flags);
 			if (err)
 				goto out;
@@ -200,7 +200,7 @@ int ovl_getattr(const struct path *path, struct kstat *stat,
 			if (ovl_test_flag(OVL_INDEX, d_inode(dentry)) ||
 			    (!ovl_verify_lower(dentry->d_sb) &&
 			     (is_dir || lowerstat.nlink == 1))) {
-				stat->ino = lowerstat.ino;
+				stat->ino = lowerstat.ino;			// 使用lower层文件的ino
 				lower_layer = ovl_layer_lower(dentry);
 			}
 
