@@ -747,8 +747,8 @@ static int ovl_mount_dir(const char *name, struct path *path)
 	char *tmp = kstrdup(name, GFP_KERNEL);
 
 	if (tmp) {
-		ovl_unescape(tmp);
-		err = ovl_mount_dir_noesc(tmp, path);
+		ovl_unescape(tmp);						// 过滤文件名中还有'\'的字符
+		err = ovl_mount_dir_noesc(tmp, path);				// 根据路径名tmp找到对应装载目录的path
 
 		if (!err)
 			if (ovl_dentry_remote(path->dentry)) {
@@ -782,15 +782,15 @@ static int ovl_lower_dir(const char *name, struct path *path,
 	int fh_type;
 	int err;
 
-	err = ovl_mount_dir_noesc(name, path);
+	err = ovl_mount_dir_noesc(name, path);					// 根据路径名name找到对应文件并放置在path
 	if (err)
 		goto out;
 
-	err = ovl_check_namelen(path, ofs, name);
+	err = ovl_check_namelen(path, ofs, name);				// 设置ofs->namelen为path对应文件名长度和ofs->namelen的最大值
 	if (err)
 		goto out_put;
 
-	*stack_depth = max(*stack_depth, path->mnt->mnt_sb->s_stack_depth);
+	*stack_depth = max(*stack_depth, path->mnt->mnt_sb->s_stack_depth);	// 设置sb->s_stack_depth为sb->s_stack_depth和当前lower层path对应vfsmount->mnt_sb->s_stack_depth的最大值
 
 	if (ovl_dentry_remote(path->dentry))
 		*remote = true;
@@ -1029,18 +1029,18 @@ static int ovl_get_upper(struct super_block *sb, struct ovl_fs *ofs,
 	struct vfsmount *upper_mnt;
 	int err;
 
-	err = ovl_mount_dir(ofs->config.upperdir, upperpath);
+	err = ovl_mount_dir(ofs->config.upperdir, upperpath);			// 根据路径名ofs->config.upperdir找到对应文件并放置在upperpath
 	if (err)
 		goto out;
 
 	/* Upper fs should not be r/o */
-	if (sb_rdonly(upperpath->mnt->mnt_sb)) {
+	if (sb_rdonly(upperpath->mnt->mnt_sb)) {				// upper层文件必须是读写
 		pr_err("overlayfs: upper fs is r/o, try multi-lower layers mount\n");
 		err = -EINVAL;
 		goto out;
 	}
 
-	err = ovl_check_namelen(upperpath, ofs, ofs->config.upperdir);
+	err = ovl_check_namelen(upperpath, ofs, ofs->config.upperdir);		// 设置ofs->namelen为upperpath对应文件名长度和ofs->namelen的最大值
 	if (err)
 		goto out;
 
@@ -1049,7 +1049,7 @@ static int ovl_get_upper(struct super_block *sb, struct ovl_fs *ofs,
 	if (err)
 		goto out;
 
-	upper_mnt = clone_private_mount(upperpath);
+	upper_mnt = clone_private_mount(upperpath);				// 克隆upper层vfsmount对应的mount实例，返回vfsmount数据项
 	err = PTR_ERR(upper_mnt);
 	if (IS_ERR(upper_mnt)) {
 		pr_err("overlayfs: failed to clone upperpath\n");
@@ -1058,7 +1058,7 @@ static int ovl_get_upper(struct super_block *sb, struct ovl_fs *ofs,
 
 	/* Don't inherit atime flags */
 	upper_mnt->mnt_flags &= ~(MNT_NOATIME | MNT_NODIRATIME | MNT_RELATIME);
-	ofs->upper_mnt = upper_mnt;
+	ofs->upper_mnt = upper_mnt;						// 初始化overlay文件系统实例的upper_mnt
 
 	if (ovl_inuse_trylock(ofs->upper_mnt->mnt_root)) {
 		ofs->upperdir_locked = true;
@@ -1085,7 +1085,7 @@ static int ovl_make_workdir(struct super_block *sb, struct ovl_fs *ofs,
 	if (err)
 		return err;
 
-	ofs->workdir = ovl_workdir_create(ofs, OVL_WORKDIR_NAME, false);
+	ofs->workdir = ovl_workdir_create(ofs, OVL_WORKDIR_NAME, false);	// 在ofs->workbasedir下创建work作为实际的工作目录，所以我们会看到$WORKDIR/work（$WORKDIR为overlaymount选项中的-o workdir=$WORKDIR）
 	if (!ofs->workdir)
 		goto out;
 
@@ -1159,16 +1159,16 @@ static int ovl_get_workdir(struct super_block *sb, struct ovl_fs *ofs,
 	int err;
 	struct path workpath = { };
 
-	err = ovl_mount_dir(ofs->config.workdir, &workpath);
+	err = ovl_mount_dir(ofs->config.workdir, &workpath);			// 根据路径名ofs->config.workdir找到对应文件并放置在workpath
 	if (err)
 		goto out;
 
 	err = -EINVAL;
-	if (upperpath->mnt != workpath.mnt) {
+	if (upperpath->mnt != workpath.mnt) {					// overlay要求workdir和upperdir必须在同一个vfsmount实例下
 		pr_err("overlayfs: workdir and upperdir must reside under the same mount\n");
 		goto out;
 	}
-	if (!ovl_workdir_ok(workpath.dentry, upperpath->dentry)) {
+	if (!ovl_workdir_ok(workpath.dentry, upperpath->dentry)) {		// workdir和upperdir不能是同一个，也不能互为祖先目录（包括父子、孙子等）
 		pr_err("overlayfs: workdir and upperdir must be separate subtrees\n");
 		goto out;
 	}
@@ -1188,7 +1188,7 @@ static int ovl_get_workdir(struct super_block *sb, struct ovl_fs *ofs,
 	if (err)
 		goto out;
 
-	err = ovl_make_workdir(sb, ofs, &workpath);
+	err = ovl_make_workdir(sb, ofs, &workpath);				// 在ofs->workbasedir创建实际工作目录
 
 out:
 	path_put(&workpath);
@@ -1405,7 +1405,7 @@ static struct ovl_entry *ovl_get_lowerstack(struct super_block *sb,
 {
 	int err;
 	char *lowertmp, *lower;
-	struct path *stack = NULL;
+	struct path *stack = NULL;						// 存放每个lower层的vfsmount和dentry
 	unsigned int stacklen, numlower = 0, i;
 	bool remote = false;
 	struct ovl_entry *oe;
@@ -1416,12 +1416,12 @@ static struct ovl_entry *ovl_get_lowerstack(struct super_block *sb,
 		goto out_err;
 
 	err = -EINVAL;
-	stacklen = ovl_split_lowerdirs(lowertmp);
-	if (stacklen > OVL_MAX_STACK) {
+	stacklen = ovl_split_lowerdirs(lowertmp);				// lower层路径名以':'分割，过滤含有'\'的字符，新的lower层路径以'\0'分割
+	if (stacklen > OVL_MAX_STACK) {						// overlay最多支持500个lower层
 		pr_err("overlayfs: too many lower directories, limit is %d\n",
 		       OVL_MAX_STACK);
 		goto out_err;
-	} else if (!ofs->config.upperdir && stacklen == 1) {
+	} else if (!ofs->config.upperdir && stacklen == 1) {			// 在upper层不存在的情况下，overlay至少应该有2个lower层，不然没有重复挂载的必要
 		pr_err("overlayfs: at least 2 lowerdir are needed while upperdir nonexistent\n");
 		goto out_err;
 	} else if (!ofs->config.upperdir && ofs->config.nfs_export &&
@@ -1438,17 +1438,17 @@ static struct ovl_entry *ovl_get_lowerstack(struct super_block *sb,
 	err = -EINVAL;
 	lower = lowertmp;
 	for (numlower = 0; numlower < stacklen; numlower++) {
-		err = ovl_lower_dir(lower, &stack[numlower], ofs,
+		err = ovl_lower_dir(lower, &stack[numlower], ofs,		// stack[numlower]是指定第numlower个lower层的路径
 				    &sb->s_stack_depth, &remote);
 		if (err)
 			goto out_err;
 
-		lower = strchr(lower, '\0') + 1;
+		lower = strchr(lower, '\0') + 1;				// 找到下一个lower层路径名
 	}
 
 	err = -EINVAL;
-	sb->s_stack_depth++;
-	if (sb->s_stack_depth > FILESYSTEM_MAX_STACK_DEPTH) {
+	sb->s_stack_depth++;							// 此时文件系统栈深度应该自增，因为overlay是基于其他文件系统的
+	if (sb->s_stack_depth > FILESYSTEM_MAX_STACK_DEPTH) {			// 所以overlay下所有层的文件系统不能是overlay，因为在普通文件系统装载一次overlay之后sb->s_stack_depth=2
 		pr_err("overlayfs: maximum fs stacking depth exceeded\n");
 		goto out_err;
 	}
@@ -1458,12 +1458,12 @@ static struct ovl_entry *ovl_get_lowerstack(struct super_block *sb,
 		goto out_err;
 
 	err = -ENOMEM;
-	oe = ovl_alloc_entry(numlower);
+	oe = ovl_alloc_entry(numlower);						// 申请根目录的ovl_dentry
 	if (!oe)
 		goto out_err;
 
-	for (i = 0; i < numlower; i++) {
-		oe->lowerstack[i].dentry = dget(stack[i].dentry);
+	for (i = 0; i < numlower; i++) {					// 初始化根目录的ovl_dentry->lowerstack
+		oe->lowerstack[i].dentry = dget(stack[i].dentry);		// overlay根目录的ovl_dentry中每个lowerstack的dentry指向每个lower层文件的dentry
 		oe->lowerstack[i].layer = &ofs->lower_layers[i];
 	}
 
@@ -1583,7 +1583,7 @@ static int ovl_fill_super(struct super_block *sb, void *data, int silent)
 		goto out_err;
 
 	err = -EINVAL;
-	if (!ofs->config.lowerdir) {
+	if (!ofs->config.lowerdir) {						// overlay文件系统必须要有至少一个lower层
 		if (!silent)
 			pr_err("overlayfs: missing 'lowerdir'\n");
 		goto out_err;
@@ -1598,17 +1598,17 @@ static int ovl_fill_super(struct super_block *sb, void *data, int silent)
 	/* alloc/destroy_inode needed for setting up traps in inode cache */
 	sb->s_op = &ovl_super_operations;
 
-	if (ofs->config.upperdir) {
-		if (!ofs->config.workdir) {
+	if (ofs->config.upperdir) {						// 如果这个overlay文件系统实例配置了upper层
+		if (!ofs->config.workdir) {					// 配置了upper层的overlay文件系统必须有workdir
 			pr_err("overlayfs: missing 'workdir'\n");
 			goto out_err;
 		}
 
-		err = ovl_get_upper(sb, ofs, &upperpath);
+		err = ovl_get_upper(sb, ofs, &upperpath);			// upperpath是指定upper层的路径，upper层的vfsmount实例被clone并赋值给ofs->upper_mnt
 		if (err)
 			goto out_err;
 
-		err = ovl_get_workdir(sb, ofs, &upperpath);
+		err = ovl_get_workdir(sb, ofs, &upperpath);			// 在overlay装载选项指定的$WORKDIR下创建实际工作目录work
 		if (err)
 			goto out_err;
 
@@ -1616,16 +1616,16 @@ static int ovl_fill_super(struct super_block *sb, void *data, int silent)
 			sb->s_flags |= SB_RDONLY;
 
 		sb->s_stack_depth = ofs->upper_mnt->mnt_sb->s_stack_depth;
-		sb->s_time_gran = ofs->upper_mnt->mnt_sb->s_time_gran;
+		sb->s_time_gran = ofs->upper_mnt->mnt_sb->s_time_gran;		// overlay文件系统的a/c/mtime时间粒度和upper层一致
 
 	}
-	oe = ovl_get_lowerstack(sb, ofs);
+	oe = ovl_get_lowerstack(sb, ofs);					// 填充ofs->lower_layers，记录lower层信息
 	err = PTR_ERR(oe);
 	if (IS_ERR(oe))
 		goto out_err;
 
 	/* If the upper fs is nonexistent, we mark overlayfs r/o too */
-	if (!ofs->upper_mnt)
+	if (!ofs->upper_mnt)							// overlay规定lower层只读，upper层rw，没有upper层的overlay当然是只读
 		sb->s_flags |= SB_RDONLY;
 
 	if (!(ovl_force_readonly(ofs)) && ofs->config.index) {
@@ -1672,11 +1672,11 @@ static int ovl_fill_super(struct super_block *sb, void *data, int silent)
 	sb->s_flags |= SB_POSIXACL;
 
 	err = -ENOMEM;
-	root_dentry = d_make_root(ovl_new_inode(sb, S_IFDIR, 0));
+	root_dentry = d_make_root(ovl_new_inode(sb, S_IFDIR, 0));		// 为overlay根目录申请inode和dentry，并将inode和dentry绑定，返回根目录的dentry
 	if (!root_dentry)
 		goto out_free_oe;
 
-	root_dentry->d_fsdata = oe;
+	root_dentry->d_fsdata = oe;						// 将根目录的dentry->d_fsdata指向overlay_dentry
 
 	mntput(upperpath.mnt);
 	if (upperpath.dentry) {
@@ -1686,13 +1686,13 @@ static int ovl_fill_super(struct super_block *sb, void *data, int silent)
 	}
 
 	/* Root is always merge -> can have whiteouts */
-	ovl_set_flag(OVL_WHITEOUTS, d_inode(root_dentry));
+	ovl_set_flag(OVL_WHITEOUTS, d_inode(root_dentry));			// 根目录是一个whiteout文件
 	ovl_dentry_set_flag(OVL_E_CONNECTED, root_dentry);
 	ovl_set_upperdata(d_inode(root_dentry));
-	ovl_inode_init(d_inode(root_dentry), upperpath.dentry,
+	ovl_inode_init(d_inode(root_dentry), upperpath.dentry,			// 根目录的ovl_inode初始化
 		       ovl_dentry_lower(root_dentry), NULL);
 
-	sb->s_root = root_dentry;
+	sb->s_root = root_dentry;						// 超级块的根目录dentry初始化
 
 	return 0;
 

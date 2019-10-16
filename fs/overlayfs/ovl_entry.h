@@ -42,21 +42,21 @@ struct ovl_path {
 
 /* private information held for overlayfs's superblock */
 struct ovl_fs {
-	struct vfsmount *upper_mnt;
-	unsigned int numlower;
+	struct vfsmount *upper_mnt;						// 如果有upper层，根目录指向upper层文件系统的vfsmount
+	unsigned int numlower;							// 有几个lower层，没有则为0
 	/* Number of unique lower sb that differ from upper sb */
 	unsigned int numlowerfs;
-	struct ovl_layer *lower_layers;
+	struct ovl_layer *lower_layers;						// 每个lower层信息，没有则为NULL
 	struct ovl_sb *lower_fs;
 	/* workbasedir is the path at workdir= mount option */
-	struct dentry *workbasedir;
+	struct dentry *workbasedir;						// overlay挂载选项中'-o workdir=$WORKDIR'指定工作目录$WORKDIR对应的dentry
 	/* workdir is the 'work' directory under workbasedir */
-	struct dentry *workdir;
+	struct dentry *workdir;							// 实际工作目录的dentry，指向$WORKDIR/work
 	/* index directory listing overlay inodes by origin file handle */
 	struct dentry *indexdir;
-	long namelen;
+	long namelen;								// 保存所有lower层和upper层对应路径的目标文件名最大长度
 	/* pathnames of lower and upper dirs, for show_options */
-	struct ovl_config config;
+	struct ovl_config config;						// overlay装载参数(upperdir、lowerdir等)，从用户态解析得到
 	/* creds of process who forced instantiation of super block */
 	const struct cred *creator_cred;
 	bool tmpfile;
@@ -81,8 +81,8 @@ struct ovl_entry {
 		};
 		struct rcu_head rcu;
 	};
-	unsigned numlower;
-	struct ovl_path lowerstack[];
+	unsigned numlower;							// 该文件在几个lower层存在，如果所有lower层都没有该文件则numlower=0，对于根目录文件所有lower层都要计数
+	struct ovl_path lowerstack[];						// 该文件在所有lower层的记录（例如对应lower层的dentry）
 };
 
 struct ovl_entry *ovl_alloc_entry(unsigned int numlower);
@@ -101,8 +101,8 @@ struct ovl_inode {
 	u64 version;
 	unsigned long flags;
 	struct inode vfs_inode;
-	struct dentry *__upperdentry;
-	struct inode *lower;
+	struct dentry *__upperdentry;						// 记录upper层dentry。如果该文件在upper层存在__upperdentry指向upper层dentry；如果该文件只存在lower层，则__upperdentry为NULL
+	struct inode *lower;							// 记录该文件出现在第一个lower层的inode，如果没有lower层存在则为NULL
 
 	/* synchronize copy up and more */
 	struct mutex lock;

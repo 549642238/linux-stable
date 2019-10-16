@@ -608,7 +608,7 @@ retry:
 	}
 	if (!s) {
 		spin_unlock(&sb_lock);
-		s = alloc_super(type, (flags & ~SB_SUBMOUNT), user_ns);
+		s = alloc_super(type, (flags & ~SB_SUBMOUNT), user_ns);		// 申请一个对应type文件系统的超级块
 		if (!s)
 			return ERR_PTR(-ENOMEM);
 		goto retry;
@@ -620,10 +620,10 @@ retry:
 		destroy_unused_super(s);
 		return ERR_PTR(err);
 	}
-	s->s_type = type;
+	s->s_type = type;							// 超级块对应文件系统类型是type
 	strlcpy(s->s_id, type->name, sizeof(s->s_id));
-	list_add_tail(&s->s_list, &super_blocks);
-	hlist_add_head(&s->s_instances, &type->fs_supers);
+	list_add_tail(&s->s_list, &super_blocks);				// 加入所有超级块链表
+	hlist_add_head(&s->s_instances, &type->fs_supers);			// 加入对应文件系统超级块哈希表
 	spin_unlock(&sb_lock);
 	get_filesystem(type);
 	register_shrinker_prepared(&s->s_shrink);
@@ -1450,12 +1450,12 @@ struct dentry *mount_nodev(struct file_system_type *fs_type,
 	int (*fill_super)(struct super_block *, void *, int))
 {
 	int error;
-	struct super_block *s = sget(fs_type, NULL, set_anon_super, flags, NULL);
+	struct super_block *s = sget(fs_type, NULL, set_anon_super, flags, NULL);// 申请一个对应文件系统类型fs_type的超级块，并做一定的初始化（超级块链表、文进系统类型等）
 
 	if (IS_ERR(s))
 		return ERR_CAST(s);
 
-	error = fill_super(s, data, flags & SB_SILENT ? 1 : 0);
+	error = fill_super(s, data, flags & SB_SILENT ? 1 : 0);			// 调用具体文件系统接口填充超级块
 	if (error) {
 		deactivate_locked_super(s);
 		return ERR_PTR(error);

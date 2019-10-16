@@ -404,13 +404,13 @@ void ovl_inode_init(struct inode *inode, struct dentry *upperdentry,
 	struct inode *realinode = d_inode(upperdentry ?: lowerdentry);
 
 	if (upperdentry)
-		OVL_I(inode)->__upperdentry = upperdentry;
+		OVL_I(inode)->__upperdentry = upperdentry;			// 如果该文件在upper层存在，将upper层dentry赋值给ovl_inode->__upperdentry
 	if (lowerdentry)
-		OVL_I(inode)->lower = igrab(d_inode(lowerdentry));
+		OVL_I(inode)->lower = igrab(d_inode(lowerdentry));		// 如果该文件在lower层存在，将lower层inode赋值给ovl_inode->lower
 	if (lowerdata)
 		OVL_I(inode)->lowerdata = igrab(d_inode(lowerdata));
 
-	ovl_copyattr(realinode, inode);
+	ovl_copyattr(realinode, inode);						// inode的属性源自对应upper/lower层（优先upper层，如果upper层存在）文件的inode
 	ovl_copyflags(realinode, inode);
 	if (!inode->i_ino)
 		inode->i_ino = realinode->i_ino;
