@@ -922,16 +922,16 @@ struct ubifs_budget_req {
  * @del: %1 => delete pending, otherwise %0
  */
 struct ubifs_orphan {
-	struct rb_node rb;
-	struct list_head list;
-	struct list_head new_list;
-	struct list_head child_list;
-	struct ubifs_orphan *cnext;
-	struct ubifs_orphan *dnext;
-	ino_t inum;
-	unsigned new:1;
-	unsigned cmt:1;
-	unsigned del:1;
+	struct rb_node rb;							// 加入ubifs文件系统c->orph_tree红黑树
+	struct list_head list;							// 加入ubifs文件系统c->orph_list链表
+	struct list_head new_list;						// 加入ubifs文件系统c->orph_new链表
+	struct list_head child_list;						// 如果一个orphan nodes有扩展属性，该链表用于存放扩展属性的orphan node
+	struct ubifs_orphan *cnext;						// 加入ubifs文件系统c->orph_cnext链表
+	struct ubifs_orphan *dnext;						// 加入ubifs文件系统c->orph_dnext链表
+	ino_t inum;								// 对应inode->i_ino
+	unsigned new:1;								// 状态位，表示orphan node还没有被commit，也没有被加入c->orph_cnext链表
+	unsigned cmt:1;								// 状态位，表示orphan node正在被commit
+	unsigned del:1;								// 状态位，表示orphan node正在被commit时被删除，不再是orphan node
 };
 
 /**
@@ -1328,9 +1328,9 @@ struct ubifs_info {
 	int lpt_lebs;
 	int lpt_first;
 	int lpt_last;
-	int orph_lebs;
-	int orph_first;
-	int orph_last;
+	int orph_lebs;								// 可以用于存放orphan node数据的LEB数量
+	int orph_first;								// 可以用于存放orphan node数据的开始LEB块号
+	int orph_last;								// 可以用于存放orphan node数据的结束LEB块号
 	int main_lebs;
 	int main_first;
 	long long main_bytes;
@@ -1382,20 +1382,20 @@ struct ubifs_info {
 	struct ubi_device_info di;
 	struct ubi_volume_info vi;
 
-	struct rb_root orph_tree;
-	struct list_head orph_list;
-	struct list_head orph_new;
-	struct ubifs_orphan *orph_cnext;
-	struct ubifs_orphan *orph_dnext;
-	spinlock_t orphan_lock;
-	void *orph_buf;
-	int new_orphans;
-	int cmt_orphans;
-	int tot_orphans;
-	int max_orphans;
-	int ohead_lnum;
-	int ohead_offs;
-	int no_orphs;
+	struct rb_root orph_tree;						// 该超级块的孤儿节点红黑树，方便快速查找某个orphan node
+	struct list_head orph_list;						// 该超级块的孤儿节点链表，存放和orph_tree中一样的orphan node
+	struct list_head orph_new;						// 该超级块的孤儿节点链表，新的orphan node被添入，表示还没有被commit
+	struct ubifs_orphan *orph_cnext;					// 存放要被commit的orphan node，一旦放入一定会执行commit操作，并且其inum会被记录到Flash
+	struct ubifs_orphan *orph_dnext;					// 正在被提交的orphan node需要删除时放入这个链表，一个orphan node不是在orph_dnext就是在orph_list中
+	spinlock_t orphan_lock;							// 操作orphan node时用到的排他锁
+	void *orph_buf;								// 要将orphan node写入Flash借助的buffer
+	int new_orphans;							// orph_new链表中orphan node的数量
+	int cmt_orphans;							// 要被提交的orphan node的数量
+	int tot_orphans;							// 总的orphan node的数量
+	int max_orphans;							// 允许的最大孤儿节点数
+	int ohead_lnum;								// orphan node在Flash上的开始LEB块号
+	int ohead_offs;								// orphan node在Flash上的偏移
+	int no_orphs;								// 当前有没有孤儿节点
 
 	struct task_struct *bgt;
 	char bgt_name[sizeof(BGT_NAME_PATTERN) + 9];

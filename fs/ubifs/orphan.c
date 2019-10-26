@@ -51,18 +51,18 @@ static struct ubifs_orphan *orphan_add(struct ubifs_info *c, ino_t inum,
 	orphan = kzalloc(sizeof(struct ubifs_orphan), GFP_NOFS);
 	if (!orphan)
 		return ERR_PTR(-ENOMEM);
-	orphan->inum = inum;
-	orphan->new = 1;
+	orphan->inum = inum;							// orphan node的inum是对应inode的ino
+	orphan->new = 1;							// orphan node的new标志位置1，代表还没有提交(commit)
 	INIT_LIST_HEAD(&orphan->child_list);
 
-	spin_lock(&c->orphan_lock);
+	spin_lock(&c->orphan_lock);						// 加锁c->orphan_lock
 	if (c->tot_orphans >= c->max_orphans) {
 		spin_unlock(&c->orphan_lock);
 		kfree(orphan);
 		return ERR_PTR(-ENFILE);
 	}
 	p = &c->orph_tree.rb_node;
-	while (*p) {
+	while (*p) {								// 将orphan node插入红黑树c->orph_tree
 		parent = *p;
 		o = rb_entry(parent, struct ubifs_orphan, rb);
 		if (inum < o->inum)
@@ -76,19 +76,19 @@ static struct ubifs_orphan *orphan_add(struct ubifs_info *c, ino_t inum,
 			return ERR_PTR(-EINVAL);
 		}
 	}
-	c->tot_orphans += 1;
-	c->new_orphans += 1;
+	c->tot_orphans += 1;							// 总的orpan node数量+1
+	c->new_orphans += 1;							// 新的orpan node数量+1
 	rb_link_node(&orphan->rb, parent, p);
 	rb_insert_color(&orphan->rb, &c->orph_tree);
-	list_add_tail(&orphan->list, &c->orph_list);
-	list_add_tail(&orphan->new_list, &c->orph_new);
+	list_add_tail(&orphan->list, &c->orph_list);				// 将orphan node加入c->orph_list
+	list_add_tail(&orphan->new_list, &c->orph_new);				// 将orphan node加入c->orph_new
 
-	if (parent_orphan) {
+	if (parent_orphan) {							// 如果有parent，还要加入到parent_orphan->child_list链表，为了支持扩展属性文件也能在unclean umount后恢复orphan node，引入child_list链表，详见988bec41318f ("ubifs: orphan: Handle xattrs like files")
 		list_add_tail(&orphan->child_list,
 			      &parent_orphan->child_list);
 	}
 
-	spin_unlock(&c->orphan_lock);
+	spin_unlock(&c->orphan_lock);						// 解锁c->orphan_lock
 	dbg_gen("ino %lu", (unsigned long)inum);
 	return orphan;
 }
@@ -114,32 +114,32 @@ static struct ubifs_orphan *lookup_orphan(struct ubifs_info *c, ino_t inum)
 
 static void __orphan_drop(struct ubifs_info *c, struct ubifs_orphan *o)
 {
-	rb_erase(&o->rb, &c->orph_tree);
-	list_del(&o->list);
-	c->tot_orphans -= 1;
+	rb_erase(&o->rb, &c->orph_tree);					// 将orphan node从红黑树删除
+	list_del(&o->list);							// 将orphan node从c->orph_list链表删除
+	c->tot_orphans -= 1;							// orphan node总数减1
 
 	if (o->new) {
-		list_del(&o->new_list);
+		list_del(&o->new_list);						// 如果orphan node还没有提交
 		c->new_orphans -= 1;
 	}
 
-	kfree(o);
+	kfree(o);								// 释放orphan node
 }
 
 static void orphan_delete(struct ubifs_info *c, struct ubifs_orphan *orph)
 {
-	if (orph->del) {
+	if (orph->del) {							// 如果orphan node状态为是del，不做处理
 		dbg_gen("deleted twice ino %lu", orph->inum);
 		return;
 	}
 
-	if (orph->cmt) {
-		orph->del = 1;
+	if (orph->cmt) {							// 如果orphan node处于提交状态
+		orph->del = 1;							// 修改orphan node状态位为del
 		orph->dnext = c->orph_dnext;
-		c->orph_dnext = orph;
+		c->orph_dnext = orph;						// 将orphan node移入c->orph_dnext
 		dbg_gen("delete later ino %lu", orph->inum);
 		return;
-	}
+	}									// 如果orphan node已经完成提交(do_commit -> ubifs_orphan_end_commit )或者orphan node还处于c->orph_new链表中（代表orphan未提交）
 
 	__orphan_drop(c, orph);
 }
@@ -160,9 +160,9 @@ int ubifs_add_orphan(struct ubifs_info *c, ino_t inum)
 	struct ubifs_dent_node *xent;
 	struct fscrypt_name nm = {0};
 	struct ubifs_orphan *xattr_orphan;
-	struct ubifs_orphan *orphan;
+	struct ubifs_orphan *orphan;						// orphan node在内存中的表示
 
-	orphan = orphan_add(c, inum, NULL);
+	orphan = orphan_add(c, inum, NULL);					// 初始化orphan node
 	if (IS_ERR(orphan))
 		return PTR_ERR(orphan);
 
@@ -201,9 +201,9 @@ void ubifs_delete_orphan(struct ubifs_info *c, ino_t inum)
 {
 	struct ubifs_orphan *orph, *child_orph, *tmp_o;
 
-	spin_lock(&c->orphan_lock);
+	spin_lock(&c->orphan_lock);						// 加锁c->orphan_lock
 
-	orph = lookup_orphan(c, inum);
+	orph = lookup_orphan(c, inum);						// orphan node必须在红黑树c->c->orph_tree中存在
 	if (!orph) {
 		spin_unlock(&c->orphan_lock);
 		ubifs_err(c, "missing orphan ino %lu", (unsigned long)inum);
@@ -212,14 +212,14 @@ void ubifs_delete_orphan(struct ubifs_info *c, ino_t inum)
 		return;
 	}
 
-	list_for_each_entry_safe(child_orph, tmp_o, &orph->child_list, child_list) {
+	list_for_each_entry_safe(child_orph, tmp_o, &orph->child_list, child_list) { // 如果有child，释放child_orphan
 		list_del(&child_orph->child_list);
 		orphan_delete(c, child_orph);
 	}
 	
 	orphan_delete(c, orph);
 
-	spin_unlock(&c->orphan_lock);
+	spin_unlock(&c->orphan_lock);						// 释放orphan node
 }
 
 /**
@@ -232,26 +232,26 @@ int ubifs_orphan_start_commit(struct ubifs_info *c)
 {
 	struct ubifs_orphan *orphan, **last;
 
-	spin_lock(&c->orphan_lock);
+	spin_lock(&c->orphan_lock);						// 加锁c->orphan_lock
 	last = &c->orph_cnext;
-	list_for_each_entry(orphan, &c->orph_new, new_list) {
+	list_for_each_entry(orphan, &c->orph_new, new_list) {			// 遍历每个c->orph_new链表中的orphan node
 		ubifs_assert(c, orphan->new);
 		ubifs_assert(c, !orphan->cmt);
-		orphan->new = 0;
-		orphan->cmt = 1;
-		*last = orphan;
+		orphan->new = 0;						// 清掉orphan node的new标志位
+		orphan->cmt = 1;						// 置上orphan node的cmt标志位，代表正在执行commit操作
+		*last = orphan;							// 将orphan node加入c->cnext链表
 		last = &orphan->cnext;
 	}
 	*last = NULL;
-	c->cmt_orphans = c->new_orphans;
-	c->new_orphans = 0;
+	c->cmt_orphans = c->new_orphans;					// 更新commit orphan node的数量
+	c->new_orphans = 0;							// 现在没有新的orphan node
 	dbg_cmt("%d orphans to commit", c->cmt_orphans);
-	INIT_LIST_HEAD(&c->orph_new);
+	INIT_LIST_HEAD(&c->orph_new);						// 清空c->orph_new链表
 	if (c->tot_orphans == 0)
 		c->no_orphs = 1;
 	else
 		c->no_orphs = 0;
-	spin_unlock(&c->orphan_lock);
+	spin_unlock(&c->orphan_lock);						// 解锁c->orphan_lock
 	return 0;
 }
 
@@ -336,7 +336,7 @@ static int do_write_orph_node(struct ubifs_info *c, int len, int atomic)
 static int write_orph_node(struct ubifs_info *c, int atomic)
 {
 	struct ubifs_orphan *orphan, *cnext;
-	struct ubifs_orph_node *orph;
+	struct ubifs_orph_node *orph;						// Flash上orphan node的表示
 	int gap, err, len, cnt, i;
 
 	ubifs_assert(c, c->cmt_orphans > 0);
@@ -359,21 +359,21 @@ static int write_orph_node(struct ubifs_info *c, int atomic)
 		cnt = c->cmt_orphans;
 	len = UBIFS_ORPH_NODE_SZ + cnt * sizeof(__le64);
 	ubifs_assert(c, c->orph_buf);
-	orph = c->orph_buf;
+	orph = c->orph_buf;							// c->orph_buf会被写入Flash，填充orph就相当于填充c->orph_buf
 	orph->ch.node_type = UBIFS_ORPH_NODE;
-	spin_lock(&c->orphan_lock);
+	spin_lock(&c->orphan_lock);						// 加锁c->orphan_lock
 	cnext = c->orph_cnext;
-	for (i = 0; i < cnt; i++) {
+	for (i = 0; i < cnt; i++) {						// 遍历c->orph_cnext链表上的每个orphan node
 		orphan = cnext;
 		ubifs_assert(c, orphan->cmt);
-		orph->inos[i] = cpu_to_le64(orphan->inum);
-		orphan->cmt = 0;
+		orph->inos[i] = cpu_to_le64(orphan->inum);			// 记录orphan inode号到orph
+		orphan->cmt = 0;						// 清掉orphan node的cmt位
 		cnext = orphan->cnext;
-		orphan->cnext = NULL;
+		orphan->cnext = NULL;						// 没遍历一个orphan node，就从c->orph_cnext链表删除一个，注意write_orph_node是一个批量的过程，所以要把遍历过的orphan node删除，确保下次遍历时的orphan node是新的
 	}
-	c->orph_cnext = cnext;
-	c->cmt_orphans -= cnt;
-	spin_unlock(&c->orphan_lock);
+	c->orph_cnext = cnext;							// write_orph_node是一个批量处理orphan node的过程，确保下次遍历时的orphan node是新的
+	c->cmt_orphans -= cnt;							// write_orph_node是一个批量处理cmt orphan node的过程，当前处理了cnt个
+	spin_unlock(&c->orphan_lock);						// 解锁c->orphan_lock
 	if (c->cmt_orphans)
 		orph->cmt_no = cpu_to_le64(c->cmt_no);
 	else
@@ -382,7 +382,7 @@ static int write_orph_node(struct ubifs_info *c, int atomic)
 	ubifs_assert(c, c->ohead_offs + len <= c->leb_size);
 	ubifs_assert(c, c->ohead_lnum >= c->orph_first);
 	ubifs_assert(c, c->ohead_lnum <= c->orph_last);
-	err = do_write_orph_node(c, len, atomic);
+	err = do_write_orph_node(c, len, atomic);				// 将c->orph_buf写入Flash
 	c->ohead_offs += ALIGN(len, c->min_io_size);
 	c->ohead_offs = ALIGN(c->ohead_offs, 8);
 	return err;
@@ -401,7 +401,7 @@ static int write_orph_nodes(struct ubifs_info *c, int atomic)
 	int err;
 
 	while (c->cmt_orphans > 0) {
-		err = write_orph_node(c, atomic);
+		err = write_orph_node(c, atomic);				// 批量处理cmt orphan node，直到c->cmt_orphans全部处理完并写入Flash
 		if (err)
 			return err;
 	}
@@ -504,9 +504,9 @@ static void erase_deleted(struct ubifs_info *c)
 {
 	struct ubifs_orphan *orphan, *dnext;
 
-	spin_lock(&c->orphan_lock);
+	spin_lock(&c->orphan_lock);						// 加锁c->orphan_lock
 	dnext = c->orph_dnext;
-	while (dnext) {
+	while (dnext) {								// 遍历c->orph_dnext中每个orphan node，将orphan node从c->orph_tree和c->orph_list中删除，并释放orphan node，c->tot_orphans -= 1，所以一个orphan node要么在c->orph_list中，要么在c->orph_dnext中
 		orphan = dnext;
 		dnext = orphan->dnext;
 		ubifs_assert(c, !orphan->new);
@@ -517,8 +517,8 @@ static void erase_deleted(struct ubifs_info *c)
 		dbg_gen("deleting orphan ino %lu", (unsigned long)orphan->inum);
 		kfree(orphan);
 	}
-	c->orph_dnext = NULL;
-	spin_unlock(&c->orphan_lock);
+	c->orph_dnext = NULL;							// 清空c->orph_dnext链表
+	spin_unlock(&c->orphan_lock);						// 解锁c->orphan_lock
 }
 
 /**
@@ -531,12 +531,12 @@ int ubifs_orphan_end_commit(struct ubifs_info *c)
 {
 	int err;
 
-	if (c->cmt_orphans != 0) {
+	if (c->cmt_orphans != 0) {						// 批量提交orphan node，直到c->cmt_orphans数量
 		err = commit_orphans(c);
 		if (err)
 			return err;
 	}
-	erase_deleted(c);
+	erase_deleted(c);							// 必须执行一次erase_deleted，删除c->orph_dnext链表上所有的orpan node并将orphan node从rb tree和链表中删除后释放orphan node，因为在commit_orphans中提交是一个批量执行过程，中间会释放c->orphan_lock锁，如果期间发生link操作会将cmt位为1的orphan node放入c->orph_dnext，放入c->orph_dnext的orphan node仍旧会被写入Flash，因为cmt位一旦置位1就会被放入c->orph_cnext链表，c->orph_cnext链表中的orphan node一定会被写入Flash
 	err = dbg_check_orphans(c);
 	return err;
 }
@@ -631,7 +631,7 @@ static int do_kill_orphans(struct ubifs_info *c, struct ubifs_scan_leb *sleb,
 	ino_t inum;
 	int i, n, err, first = 1;
 
-	list_for_each_entry(snod, &sleb->nodes, list) {
+	list_for_each_entry(snod, &sleb->nodes, list) {				// sleb是从Flash上读起来的包含orphan node的LEB数据
 		if (snod->type != UBIFS_ORPH_NODE) {
 			ubifs_err(c, "invalid node type %d in orphan area at %d:%d",
 				  snod->type, sleb->lnum, snod->offs);
@@ -639,7 +639,7 @@ static int do_kill_orphans(struct ubifs_info *c, struct ubifs_scan_leb *sleb,
 			return -EINVAL;
 		}
 
-		orph = snod->node;
+		orph = snod->node;						// 从LEB数据获取一个orpan结构
 
 		/* Check commit number */
 		cmt_no = le64_to_cpu(orph->cmt_no) & LLONG_MAX;
@@ -678,13 +678,13 @@ static int do_kill_orphans(struct ubifs_info *c, struct ubifs_scan_leb *sleb,
 			return -ENOMEM;
 
 		n = (le32_to_cpu(orph->ch.len) - UBIFS_ORPH_NODE_SZ) >> 3;
-		for (i = 0; i < n; i++) {
+		for (i = 0; i < n; i++) {					// 对于每个orphan inode
 			union ubifs_key key1, key2;
 
 			inum = le64_to_cpu(orph->inos[i]);
 
 			ino_key_init(c, &key1, inum);
-			err = ubifs_tnc_lookup(c, &key1, ino);
+			err = ubifs_tnc_lookup(c, &key1, ino);			// 根据ino查找对应的inode结构
 			if (err)
 				goto out_free;
 
@@ -692,14 +692,14 @@ static int do_kill_orphans(struct ubifs_info *c, struct ubifs_scan_leb *sleb,
 			 * Check whether an inode can really get deleted.
 			 * linkat() with O_TMPFILE allows rebirth of an inode.
 			 */
-			if (ino->nlink == 0) {
+			if (ino->nlink == 0) {					// 对于tmpfile，虽然创建时被加入orphan list，如果在commit结束后其orphan node写入Flash，之后发生link操作（不再是orphan文件），之后又发生unclean umount，再次mount时如果不对ino->nlink计数做判断可能会将其从TNC Tree中删除
 				dbg_rcvry("deleting orphaned inode %lu",
 					  (unsigned long)inum);
 
 				lowest_ino_key(c, &key1, inum);
 				highest_ino_key(c, &key2, inum);
 
-				err = ubifs_tnc_remove_range(c, &key1, &key2);
+				err = ubifs_tnc_remove_range(c, &key1, &key2);	// 将orphan inode从TNC Tree上移除，由于unclean umount可能没有从TNC Tree来得及删除orphan inode
 				if (err)
 					goto out_ro;
 			}
@@ -814,9 +814,9 @@ int ubifs_mount_orphans(struct ubifs_info *c, int unclean, int read_only)
 	}
 
 	if (unclean)
-		err = kill_orphans(c);
-	else if (!read_only)
-		err = ubifs_clear_orphans(c);
+		err = kill_orphans(c);						// 上次umount操作不是clean的，需要恢复
+	else if (!read_only)							// 上次umount操作是clean，文件系统不是只读
+		err = ubifs_clear_orphans(c);					// 擦除Flash上的orphan node记录
 
 	return err;
 }

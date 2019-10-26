@@ -381,7 +381,7 @@ static int do_tmpfile(struct inode *dir, struct dentry *dentry,
 		return err;
 	}
 
-	inode = ubifs_new_inode(c, dir, mode);
+	inode = ubifs_new_inode(c, dir, mode);					// 新建的inode的i_nlink计数为1
 	if (IS_ERR(inode)) {
 		err = PTR_ERR(inode);
 		goto out_budg;
@@ -402,10 +402,10 @@ static int do_tmpfile(struct inode *dir, struct dentry *dentry,
 
 	if (whiteout) {
 		mark_inode_dirty(inode);
-		drop_nlink(inode);
+		drop_nlink(inode);						// i_nlink减1，此时临时文件inode的i_nlink=0
 		*whiteout = inode;
 	} else {
-		d_tmpfile(dentry, inode);
+		d_tmpfile(dentry, inode);					// 调用drop_nlink使i_nlink减1，此时临时文件inode的i_nlink=0
 	}
 	ubifs_assert(c, ui->dirty);
 
@@ -440,7 +440,7 @@ out_budg:
 static int ubifs_tmpfile(struct inode *dir, struct dentry *dentry,
 			 umode_t mode)
 {
-	return do_tmpfile(dir, dentry, mode, NULL);
+	return do_tmpfile(dir, dentry, mode, NULL);				// 生成tmpfile
 }
 
 /**
@@ -724,8 +724,8 @@ static int ubifs_link(struct dentry *old_dentry, struct inode *dir,
 	lock_2_inodes(dir, inode);
 
 	/* Handle O_TMPFILE corner case, it is allowed to link a O_TMPFILE. */
-	if (inode->i_nlink == 0)
-		ubifs_delete_orphan(c, inode->i_ino);
+	if (inode->i_nlink == 0)						// 如果链接的inode原来的引用计数为0，可能是一个tmpfile
+		ubifs_delete_orphan(c, inode->i_ino);				// 将对应inode从orphan node记录中删除，防止将其记录到Flash中的orphan node，发生unclean umount时防止遍历Flash记录的orphan inode然后从TNC Tree上删除对应的inode
 
 	inc_nlink(inode);
 	ihold(inode);

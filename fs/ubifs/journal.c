@@ -541,7 +541,7 @@ int ubifs_jnl_update(struct ubifs_info *c, const struct inode *dir,
 {
 	int err, dlen, ilen, len, lnum, ino_offs, dent_offs;
 	int aligned_dlen, aligned_ilen, sync = IS_DIRSYNC(dir);
-	int last_reference = !!(deletion && inode->i_nlink == 0);
+	int last_reference = !!(deletion && inode->i_nlink == 0);		// 对于do_tmpfile调用，last_reference=1
 	struct ubifs_inode *ui = ubifs_inode(inode);
 	struct ubifs_inode *host_ui = ubifs_inode(dir);
 	struct ubifs_dent_node *dent;
@@ -624,7 +624,7 @@ int ubifs_jnl_update(struct ubifs_info *c, const struct inode *dir,
 		goto out_release;
 
 	if (last_reference) {
-		err = ubifs_add_orphan(c, inode->i_ino);
+		err = ubifs_add_orphan(c, inode->i_ino);			// 对创建tmpfile传进来的inode一定会执行这一步
 		if (err) {
 			release_head(c, BASEHD);
 			goto out_finish;

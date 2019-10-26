@@ -867,14 +867,14 @@ static void free_orphans(struct ubifs_info *c)
 {
 	struct ubifs_orphan *orph;
 
-	while (c->orph_dnext) {
+	while (c->orph_dnext) {							// 清空c->orph_dnext链表，释放上面的每一个orphan node
 		orph = c->orph_dnext;
 		c->orph_dnext = orph->dnext;
 		list_del(&orph->list);
 		kfree(orph);
 	}
 
-	while (!list_empty(&c->orph_list)) {
+	while (!list_empty(&c->orph_list)) {					// 清空c->orph_list链表，释放上面的每一个orphan node，如果orphan_delete没有释放掉child orphan，它们会在umount时被释放，因为每个orphan创建时都被添加到了c->orph_list
 		orph = list_entry(c->orph_list.next, struct ubifs_orphan, list);
 		list_del(&orph->list);
 		kfree(orph);
