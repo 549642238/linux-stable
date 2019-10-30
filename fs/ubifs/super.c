@@ -621,7 +621,7 @@ static int init_constants_early(struct ubifs_info *c)
 		c->max_bu_buf_len = c->leb_size;
 
 	/* Log is ready, preserve one LEB for commits. */
-	c->min_log_bytes = c->leb_size;
+	c->min_log_bytes = c->leb_size;						// mount时必须对c->min_log_bytes初始化，详见https://github.com/549642238/linux-stable/wiki/ubifs:-Why-c--min_log_bytes-should-be-initialized-as-c--leb_size-before-in-mount-operation
 
 	return 0;
 }

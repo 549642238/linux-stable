@@ -692,7 +692,7 @@ static int do_kill_orphans(struct ubifs_info *c, struct ubifs_scan_leb *sleb,
 			 * Check whether an inode can really get deleted.
 			 * linkat() with O_TMPFILE allows rebirth of an inode.
 			 */
-			if (ino->nlink == 0) {					// 对于tmpfile，虽然创建时被加入orphan list，如果在commit结束后其orphan node写入Flash，之后发生link操作（不再是orphan文件），之后又发生unclean umount，再次mount时如果不对ino->nlink计数做判断可能会将其从TNC Tree中删除
+			if (ino->nlink == 0) {					// 对于tmpfile，虽然创建时被加入orphan list，如果在commit结束后其orphan node写入Flash，之后发生link操作（不再是orphan文件），之后又发生unclean umount，再次mount时如果不对ino->nlink计数做判断可能会将其从TNC Tree中删除，详见https://github.com/549642238/linux-stable/wiki/ubifs:-How-ubifs_link-affects-an-tmpfile's-orphan-node
 				dbg_rcvry("deleting orphaned inode %lu",
 					  (unsigned long)inum);
 
