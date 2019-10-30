@@ -128,7 +128,7 @@ static int do_commit(struct ubifs_info *c)
 	err = dbg_check_lprops(c);
 	if (err)
 		goto out_up;
-	err = ubifs_log_start_commit(c, &new_ltail_lnum);
+	err = ubifs_log_start_commit(c, &new_ltail_lnum);			// 开始提交日志
 	if (err)
 		goto out_up;
 	err = ubifs_tnc_start_commit(c, &zroot);
@@ -187,12 +187,12 @@ static int do_commit(struct ubifs_info *c)
 	else
 		c->mst_node->flags &= ~cpu_to_le32(UBIFS_MST_NO_ORPHS);
 
-	old_ltail_lnum = c->ltail_lnum;
-	err = ubifs_log_end_commit(c, new_ltail_lnum);
+	old_ltail_lnum = c->ltail_lnum;						// 本次提交的journal内容包括从c->ltail_lnum到c->lhead_lnum的log LEB
+	err = ubifs_log_end_commit(c, new_ltail_lnum);				// 日志提交完成
 	if (err)
 		goto out;
 
-	err = ubifs_log_post_commit(c, old_ltail_lnum);
+	err = ubifs_log_post_commit(c, old_ltail_lnum);				// 日志提交结束后续清理
 	if (err)
 		goto out;
 	err = ubifs_gc_end_commit(c);

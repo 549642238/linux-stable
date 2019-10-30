@@ -1262,11 +1262,11 @@ struct ubifs_info {
 	int ro_compat_version;
 	unsigned char uuid[16];
 
-	int lhead_lnum;
-	int lhead_offs;
-	int ltail_lnum;
-	struct mutex log_mutex;
-	int min_log_bytes;
+	int lhead_lnum;								// 用于记录日志的log LEB开始块号
+	int lhead_offs;								// 日志记录在块内c->lhead_lnum的开始偏移
+	int ltail_lnum;								// 用于记录日志的log LEB结束块号
+	struct mutex log_mutex;							// 保护lhead_lnum、lhead_offs、ltail_lnum变量
+	int min_log_bytes;							// 每次写入日志前必须在log LEB保留min_log_bytes字节，以供commit使用
 	long long cmt_bud_bytes;
 
 	struct rb_root buds;
@@ -1279,7 +1279,7 @@ struct ubifs_info {
 	struct list_head old_buds;
 	int max_bud_cnt;
 
-	struct rw_semaphore commit_sem;
+	struct rw_semaphore commit_sem;						// 用于提交保护操作的信号量，控制提交操作不并行
 	int cmt_state;
 	spinlock_t cs_lock;
 	wait_queue_head_t cmt_wq;

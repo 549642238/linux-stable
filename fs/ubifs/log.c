@@ -176,7 +176,7 @@ int ubifs_add_bud_to_log(struct ubifs_info *c, int jhead, int lnum, int offs)
 		return -ENOMEM;
 	}
 
-	mutex_lock(&c->log_mutex);
+	mutex_lock(&c->log_mutex);						// 加锁c->log_mutex
 	ubifs_assert(c, !c->ro_media && !c->ro_mount);
 	if (c->ro_error) {
 		err = -EROFS;
@@ -184,11 +184,11 @@ int ubifs_add_bud_to_log(struct ubifs_info *c, int jhead, int lnum, int offs)
 	}
 
 	/* Make sure we have enough space in the log */
-	if (empty_log_bytes(c) - c->ref_node_alsz < c->min_log_bytes) {
+	if (empty_log_bytes(c) - c->ref_node_alsz < c->min_log_bytes) {		// 在log LEB中预留一个LEB大小的空间(c->min_log_bytes)用于ubifs_log_start_commit使用，ubifs_log_start_commit会在log LEB写入commit start信息到至多一个LEB
 		dbg_log("not enough log space - %lld, required %d",
 			empty_log_bytes(c), c->min_log_bytes);
 		ubifs_commit_required(c);
-		err = -EAGAIN;
+		err = -EAGAIN;							// 如果扣除本次日志大小c->ref_node_alsz后不够c->min_log_bytes，那就可能导致commit失败，所以直接返回-EAGAIN，调用ubifs_run_commit进行一次提交，提交之后就会有足够的可用log LEB写入journal
 		goto out_unlock;
 	}
 
@@ -231,15 +231,15 @@ int ubifs_add_bud_to_log(struct ubifs_info *c, int jhead, int lnum, int offs)
 	ref->offs = cpu_to_le32(bud->start);
 	ref->jhead = cpu_to_le32(jhead);
 
-	if (c->lhead_offs > c->leb_size - c->ref_node_alsz) {
+	if (c->lhead_offs > c->leb_size - c->ref_node_alsz) {			// 如果当前log LEB剩余空间不够写入c->ref_node_alsz，就使用下一块log LEB写入
 		c->lhead_lnum = ubifs_next_log_lnum(c, c->lhead_lnum);
 		ubifs_assert(c, c->lhead_lnum != c->ltail_lnum);
-		c->lhead_offs = 0;
+		c->lhead_offs = 0;						// 块内开始写入偏移量置0（c->lhead_offs = 0）
 	}
 
-	if (c->lhead_offs == 0) {
+	if (c->lhead_offs == 0) {						// 说明使用了新的log LEB
 		/* Must ensure next log LEB has been unmapped */
-		err = ubifs_leb_unmap(c, c->lhead_lnum);
+		err = ubifs_leb_unmap(c, c->lhead_lnum);			// 使用unmap擦除
 		if (err)
 			goto out_unlock;
 	}
@@ -259,8 +259,8 @@ int ubifs_add_bud_to_log(struct ubifs_info *c, int jhead, int lnum, int offs)
 
 	dbg_log("write ref LEB %d:%d",
 		c->lhead_lnum, c->lhead_offs);
-	err = ubifs_write_node(c, ref, UBIFS_REF_NODE_SZ, c->lhead_lnum,
-			       c->lhead_offs);
+	err = ubifs_write_node(c, ref, UBIFS_REF_NODE_SZ, c->lhead_lnum,	// 写入ref到对应块号为c->lhead_lnum的log LEB，UBIFS_REF_NODE_SZ就是c->ref_node_alsz
+			       c->lhead_offs);					// 从偏移量为c->lhead_offs的块内位置开始写
 	if (err)
 		goto out_unlock;
 
@@ -272,11 +272,11 @@ int ubifs_add_bud_to_log(struct ubifs_info *c, int jhead, int lnum, int offs)
 	if (err)
 		goto out_unlock;
 
-	c->lhead_offs += c->ref_node_alsz;
+	c->lhead_offs += c->ref_node_alsz;					// 更新块内日志开始写入的偏移位置
 
 	ubifs_add_bud(c, bud);
 
-	mutex_unlock(&c->log_mutex);
+	mutex_unlock(&c->log_mutex);						// 解锁c->log_mutex
 	kfree(ref);
 	return 0;
 
@@ -418,26 +418,26 @@ int ubifs_log_start_commit(struct ubifs_info *c, int *ltail_lnum)
 	ubifs_pad(c, buf + len, ALIGN(len, c->min_io_size) - len);
 
 	/* Switch to the next log LEB */
-	if (c->lhead_offs) {
-		c->lhead_lnum = ubifs_next_log_lnum(c, c->lhead_lnum);
-		ubifs_assert(c, c->lhead_lnum != c->ltail_lnum);
-		c->lhead_offs = 0;
+	if (c->lhead_offs) {							// 将日志节点写入新的log LEB，如果当前log LEB已经有内容
+		c->lhead_lnum = ubifs_next_log_lnum(c, c->lhead_lnum);		// 获取下一个可用的log LEB
+		ubifs_assert(c, c->lhead_lnum != c->ltail_lnum);		// 没有可用的log LEB了，不可能！每次写入log前都会检查，一定会保证预留出c->min_log_bytes(c->leb_size)大小的log LEB空间用作提交操作
+		c->lhead_offs = 0;						// 日志写入开始偏移为0
 	}
 
 	/* Must ensure next LEB has been unmapped */
-	err = ubifs_leb_unmap(c, c->lhead_lnum);
+	err = ubifs_leb_unmap(c, c->lhead_lnum);				// unmap c->lhead_lnum号LEB，之后会后台擦除，可以理解为擦除操作
 	if (err)
 		goto out;
 
-	len = ALIGN(len, c->min_io_size);
+	len = ALIGN(len, c->min_io_size);					// 要往log LEB中写入commit start的对齐长度，不会超过一个LEB大小
 	dbg_log("writing commit start at LEB %d:0, len %d", c->lhead_lnum, len);
-	err = ubifs_leb_write(c, c->lhead_lnum, cs, 0, len);
+	err = ubifs_leb_write(c, c->lhead_lnum, cs, 0, len);			// 写入commit start信息到Flash，从c->lhead_lnum号的LEB（写前重新map，获得一块没有内容的新LEB）开始，写入块内起始偏移为0，写入数据长度为len
 	if (err)
 		goto out;
 
-	*ltail_lnum = c->lhead_lnum;
+	*ltail_lnum = c->lhead_lnum;						// commit_end执行后，c->ltail_lnum=ltail_lnum，表示可以清空所有log LEB的内容
 
-	c->lhead_offs += len;
+	c->lhead_offs += len;							// 更新c->lhead_offs
 	ubifs_assert(c, c->lhead_offs < c->leb_size);
 
 	remove_buds(c);
@@ -472,17 +472,17 @@ int ubifs_log_end_commit(struct ubifs_info *c, int ltail_lnum)
 	 * writes during commit. Its only short "commit" start phase when
 	 * writers are blocked.
 	 */
-	mutex_lock(&c->log_mutex);
+	mutex_lock(&c->log_mutex);						// 加锁c->log_mutex
 
 	dbg_log("old tail was LEB %d:0, new tail is LEB %d:0",
 		c->ltail_lnum, ltail_lnum);
 
-	c->ltail_lnum = ltail_lnum;
+	c->ltail_lnum = ltail_lnum;						// 日志写入完成，log LEB记录内容无效
 	/*
 	 * The commit is finished and from now on it must be guaranteed that
 	 * there is always enough space for the next commit.
 	 */
-	c->min_log_bytes = c->leb_size;
+	c->min_log_bytes = c->leb_size;						// 保证下一次commit时为log内容预留至少一个LEB的Flash空间
 
 	spin_lock(&c->buds_lock);
 	c->bud_bytes -= c->cmt_bud_bytes;
@@ -492,10 +492,10 @@ int ubifs_log_end_commit(struct ubifs_info *c, int ltail_lnum)
 	if (err)
 		goto out;
 
-	err = ubifs_write_master(c);
+	err = ubifs_write_master(c);						// 将超级块master node写入Flash
 
 out:
-	mutex_unlock(&c->log_mutex);
+	mutex_unlock(&c->log_mutex);						// 解锁c->log_mutex
 	return err;
 }
 
@@ -527,8 +527,8 @@ int ubifs_log_post_commit(struct ubifs_info *c, int old_ltail_lnum)
 		kfree(bud->log_hash);
 		kfree(bud);
 	}
-	mutex_lock(&c->log_mutex);
-	for (lnum = old_ltail_lnum; lnum != c->ltail_lnum;
+	mutex_lock(&c->log_mutex);						// 加锁c->log_mutex
+	for (lnum = old_ltail_lnum; lnum != c->ltail_lnum;			// 释放这次commit用来存储journal内容的log LEB，ubifs_log_start_commit结束后之前c->ltail_lnum号LEB一直到c->lhead_lnum的log LEB都被释放
 	     lnum = ubifs_next_log_lnum(c, lnum)) {
 		dbg_log("unmap log LEB %d", lnum);
 		err = ubifs_leb_unmap(c, lnum);
@@ -536,7 +536,7 @@ int ubifs_log_post_commit(struct ubifs_info *c, int old_ltail_lnum)
 			goto out;
 	}
 out:
-	mutex_unlock(&c->log_mutex);
+	mutex_unlock(&c->log_mutex);						// 解锁c->log_mutex
 	return err;
 }
 
