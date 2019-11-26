@@ -2769,7 +2769,7 @@ static int unshare_fd(unsigned long unshare_flags, struct files_struct **new_fdp
  * constructed. Here we are modifying the current, active,
  * task_struct.
  */
-int ksys_unshare(unsigned long unshare_flags)
+int ksys_unshare(unsigned long unshare_flags)					// unshare系统调用
 {
 	struct fs_struct *fs, *new_fs = NULL;
 	struct files_struct *fd, *new_fd = NULL;
@@ -2820,7 +2820,7 @@ int ksys_unshare(unsigned long unshare_flags)
 	if (err)
 		goto bad_unshare_cleanup_fd;
 	err = unshare_nsproxy_namespaces(unshare_flags, &new_nsproxy,
-					 new_cred, new_fs);
+					 new_cred, new_fs);			// 创建命名空间
 	if (err)
 		goto bad_unshare_cleanup_cred;
 
@@ -2885,7 +2885,7 @@ bad_unshare_out:
 	return err;
 }
 
-SYSCALL_DEFINE1(unshare, unsigned long, unshare_flags)
+SYSCALL_DEFINE1(unshare, unsigned long, unshare_flags)				// unshare系统调用
 {
 	return ksys_unshare(unshare_flags);
 }

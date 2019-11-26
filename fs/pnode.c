@@ -70,16 +70,16 @@ int get_dominating_id(struct mount *mnt, const struct path *root)
 	return 0;
 }
 
-static int do_make_slave(struct mount *mnt)
+static int do_make_slave(struct mount *mnt)					// 设置mnt的传播属性为slave，mnt的slave也要更换master
 {
 	struct mount *master, *slave_mnt;
 
-	if (list_empty(&mnt->mnt_share)) {
+	if (list_empty(&mnt->mnt_share)) {					// 如果mnt所在peer group没有其他mount实例，比如mount sde dir生成的mount实例所在mnt_share链表只有它一个元素
 		if (IS_MNT_SHARED(mnt)) {
 			mnt_release_group_id(mnt);
 			CLEAR_MNT_SHARED(mnt);
 		}
-		master = mnt->mnt_master;
+		master = mnt->mnt_master;					// mnt可能原本就是slave，也可能先是slave后变成shared，这时候既有mnt_master又有shared标志位
 		if (!master) {
 			struct list_head *p = &mnt->mnt_slave_list;
 			while (!list_empty(p)) {
@@ -90,7 +90,7 @@ static int do_make_slave(struct mount *mnt)
 			}
 			return 0;
 		}
-	} else {
+	} else {								// 如果mnt存在于一个peer group（mnt_share链表上还有其他mount实例），随便取链表上一个mount实例（优先选根目录项和mnt相同的，也可以是自己）
 		struct mount *m;
 		/*
 		 * slave 'mnt' to a peer mount that has the
@@ -103,16 +103,16 @@ static int do_make_slave(struct mount *mnt)
 				break;
 			}
 		}
-		list_del_init(&mnt->mnt_share);
-		mnt->mnt_group_id = 0;
-		CLEAR_MNT_SHARED(mnt);
+		list_del_init(&mnt->mnt_share);					// 从mnt_share链表上删除mnt实例
+		mnt->mnt_group_id = 0;						// 不属于任何一个peer group
+		CLEAR_MNT_SHARED(mnt);						// 清除mnt实例的shared标志位
 	}
-	list_for_each_entry(slave_mnt, &mnt->mnt_slave_list, mnt_slave)
+	list_for_each_entry(slave_mnt, &mnt->mnt_slave_list, mnt_slave)		// mnt所有slave mount实例的mnt_master都设置为master
 		slave_mnt->mnt_master = master;
-	list_move(&mnt->mnt_slave, &master->mnt_slave_list);
+	list_move(&mnt->mnt_slave, &master->mnt_slave_list);			// 把mnt挂载实例移动到master的slave list
 	list_splice(&mnt->mnt_slave_list, master->mnt_slave_list.prev);
 	INIT_LIST_HEAD(&mnt->mnt_slave_list);
-	mnt->mnt_master = master;
+	mnt->mnt_master = master;						// 设置mnt的mnt_master为master
 	return 0;
 }
 
@@ -122,17 +122,17 @@ static int do_make_slave(struct mount *mnt)
 void change_mnt_propagation(struct mount *mnt, int type)
 {
 	if (type == MS_SHARED) {
-		set_mnt_shared(mnt);
+		set_mnt_shared(mnt);						// 设置mnt的传播属性为shared，同时清除unbindable标志，所以不可能有mount实例同时为unbindable和shared
 		return;
 	}
-	do_make_slave(mnt);
+	do_make_slave(mnt);							// 设置mnt的传播属性为slave，mnt的slave也要更换master。清掉mnt的shared标志位和mnt_group_id
 	if (type != MS_SLAVE) {
 		list_del_init(&mnt->mnt_slave);
 		mnt->mnt_master = NULL;
 		if (type == MS_UNBINDABLE)
-			mnt->mnt.mnt_flags |= MNT_UNBINDABLE;
+			mnt->mnt.mnt_flags |= MNT_UNBINDABLE;			// 设置mnt的传播属性为unbindable
 		else
-			mnt->mnt.mnt_flags &= ~MNT_UNBINDABLE;
+			mnt->mnt.mnt_flags &= ~MNT_UNBINDABLE;			// mnt的传播属性为private，既没有master也没有MNT_UNBINDABLE和MNT_SHARED
 	}
 }
 
@@ -180,7 +180,7 @@ static struct mount *skip_propagation_subtree(struct mount *m,
 	return m;
 }
 
-static struct mount *next_group(struct mount *m, struct mount *origin)
+static struct mount *next_group(struct mount *m, struct mount *origin)		// 递归遍历origin下所有slave，对每个slave节点遍历它的slave mount实例
 {
 	while (1) {
 		while (1) {
@@ -227,14 +227,14 @@ static int propagate_one(struct mount *m)
 	struct mount *child;
 	int type;
 	/* skip ones added by this propagate_mnt() */
-	if (IS_MNT_NEW(m))
+	if (IS_MNT_NEW(m))							// 传播挂载操作到m时检查m是否为clone的挂载实例（来自copy_tree，可能是propagate_one或mount --(r)bind克隆生成，也可能是propagate_one传播clone生成），对clone的挂载实例传播到clone挂载实例会无限递归下去（因为clone的挂载实例可能和old mount实例处于同一shared peer group）
 		return 0;
 	/* skip if mountpoint isn't covered by it */
-	if (!is_subdir(mp->m_dentry, m->mnt.mnt_root))
+	if (!is_subdir(mp->m_dentry, m->mnt.mnt_root))				// 如果挂载操作生成的实例对应的挂载目录不在m挂载实例的根目录下（虽然挂载操作应该告知m，但挂载操作影响的目录在m文件系统下看不到），忽略该挂载传播
 		return 0;
-	if (peers(m, last_dest)) {
+	if (peers(m, last_dest)) {						// 如果m和last_dest是同一个peer group，设置clone的传播标志位为CL_MAKE_SHARED
 		type = CL_MAKE_SHARED;
-	} else {
+	} else {								// 发生了传播操作，不是shared就是slave，这里直接设置clone的传播标志位为CL_SLAVE，但如果m还包含了shared标志位，设置clone的传播标志位为CL_MAKE_SHARED。（先mount --make--slave再mount --make-shared可以让一个mount实例同时拥有shared和slave传播标志位，而且mnt_group_id是新申请的）
 		struct mount *n, *p;
 		bool done;
 		for (n = m; ; n = p) {
@@ -258,10 +258,10 @@ static int propagate_one(struct mount *m)
 			type |= CL_MAKE_SHARED;
 	}
 		
-	child = copy_tree(last_source, last_source->mnt.mnt_root, type);
+	child = copy_tree(last_source, last_source->mnt.mnt_root, type);	// 克隆整个以last source为根的mount文件系统树
 	if (IS_ERR(child))
 		return PTR_ERR(child);
-	mnt_set_mountpoint(m, mp, child);
+	mnt_set_mountpoint(m, mp, child);					// 将child及其子文件系统树加入到m，m是child挂载实例的parent，完成挂载操作到m的传播
 	last_dest = m;
 	last_source = child;
 	if (m->mnt_master != dest_master) {
@@ -287,7 +287,7 @@ static int propagate_one(struct mount *m)
  * @tree_list : list of heads of trees to be attached.
  */
 int propagate_mnt(struct mount *dest_mnt, struct mountpoint *dest_mp,
-		    struct mount *source_mnt, struct hlist_head *tree_list)
+		    struct mount *source_mnt, struct hlist_head *tree_list)	// mount --move、mount、mount --r(bind)和finish_automount调用，所有在dest_mnt实例目录下的挂载操作，都要传播到dest_mnt的peer group和slave group中的其他mount实例，slave group中的mount实例如果有peer或slave要继续递归传播
 {
 	struct mount *m, *n;
 	int ret = 0;
@@ -305,7 +305,7 @@ int propagate_mnt(struct mount *dest_mnt, struct mountpoint *dest_mp,
 	dest_master = dest_mnt->mnt_master;
 
 	/* all peers of dest_mnt, except dest_mnt itself */
-	for (n = next_peer(dest_mnt); n != dest_mnt; n = next_peer(n)) {
+	for (n = next_peer(dest_mnt); n != dest_mnt; n = next_peer(n)) {	// 处理peer group，对所有在mnt_share链表上的其他mount实例传播mount操作
 		ret = propagate_one(n);
 		if (ret)
 			goto out;
@@ -313,7 +313,7 @@ int propagate_mnt(struct mount *dest_mnt, struct mountpoint *dest_mp,
 
 	/* all slave groups */
 	for (m = next_group(dest_mnt, dest_mnt); m;
-			m = next_group(m, dest_mnt)) {
+			m = next_group(m, dest_mnt)) {				// 处理slave group，对所有在mnt_slave_list链表上的mount实例传播mount操作，包括每个slave的peer group和slave group
 		/* everything in that slave group */
 		n = m;
 		do {

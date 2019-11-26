@@ -59,7 +59,7 @@ static inline struct nsproxy *create_nsproxy(void)
  */
 static struct nsproxy *create_new_namespaces(unsigned long flags,
 	struct task_struct *tsk, struct user_namespace *user_ns,
-	struct fs_struct *new_fs)
+	struct fs_struct *new_fs)						// 创建相关命名空间
 {
 	struct nsproxy *new_nsp;
 	int err;
@@ -68,7 +68,7 @@ static struct nsproxy *create_new_namespaces(unsigned long flags,
 	if (!new_nsp)
 		return ERR_PTR(-ENOMEM);
 
-	new_nsp->mnt_ns = copy_mnt_ns(flags, tsk->nsproxy->mnt_ns, user_ns, new_fs);
+	new_nsp->mnt_ns = copy_mnt_ns(flags, tsk->nsproxy->mnt_ns, user_ns, new_fs); // 创建新的命名空间并拷贝原mount namespace下的文件系统装载树
 	if (IS_ERR(new_nsp->mnt_ns)) {
 		err = PTR_ERR(new_nsp->mnt_ns);
 		goto out_ns;
@@ -186,7 +186,7 @@ void free_nsproxy(struct nsproxy *ns)
  * On success, returns the new nsproxy.
  */
 int unshare_nsproxy_namespaces(unsigned long unshare_flags,
-	struct nsproxy **new_nsp, struct cred *new_cred, struct fs_struct *new_fs)
+	struct nsproxy **new_nsp, struct cred *new_cred, struct fs_struct *new_fs) // 创建新的命名空间
 {
 	struct user_namespace *user_ns;
 	int err = 0;
@@ -200,7 +200,7 @@ int unshare_nsproxy_namespaces(unsigned long unshare_flags,
 		return -EPERM;
 
 	*new_nsp = create_new_namespaces(unshare_flags, current, user_ns,
-					 new_fs ? new_fs : current->fs);
+					 new_fs ? new_fs : current->fs);	// 创建新的命名空间
 	if (IS_ERR(*new_nsp)) {
 		err = PTR_ERR(*new_nsp);
 		goto out;

@@ -8,14 +8,14 @@
 struct mnt_namespace {
 	atomic_t		count;
 	struct ns_common	ns;
-	struct mount *	root;
-	struct list_head	list;
+	struct mount *	root;							// mount命名空间的根文件系统对应的装载实例
+	struct list_head	list;						// mount命名空间下的mount实例都被链入list
 	struct user_namespace	*user_ns;
 	struct ucounts		*ucounts;
 	u64			seq;	/* Sequence number to prevent loops */
 	wait_queue_head_t poll;
 	u64 event;
-	unsigned int		mounts; /* # of mounts in the namespace */
+	unsigned int		mounts; /* # of mounts in the namespace */	// 该命名空间下已经mount的装载实例
 	unsigned int		pending_mounts;
 } __randomize_layout;
 
@@ -25,39 +25,39 @@ struct mnt_pcp {
 };
 
 struct mountpoint {
-	struct hlist_node m_hash;
-	struct dentry *m_dentry;
+	struct hlist_node m_hash;						// 挂载点节点全局哈希表
+	struct dentry *m_dentry;						// 挂载点节点对应的挂载路径dentry(/mnt)
 	struct hlist_head m_list;
-	int m_count;
+	int m_count;								// 挂载点节点引用计数
 };
 
 struct mount {
-	struct hlist_node mnt_hash;
-	struct mount *mnt_parent;
-	struct dentry *mnt_mountpoint;
-	struct vfsmount mnt;
+	struct hlist_node mnt_hash;						// 全局挂载实例哈希表，不包括系统根挂载实例
+	struct mount *mnt_parent;						// 指向父挂载实例，例如挂载实例A对应文件系统挂载到挂载实例B对应文件系统的/mnt下，A的parent就是B，系统根挂载实例指向自己
+	struct dentry *mnt_mountpoint;						// 指向被挂载文件系统装载实例对应的目录项，例如/mnt的dentry
+	struct vfsmount mnt;							// vfsmount（本挂载实例对应文件系统信息）
 	union {
 		struct rcu_head mnt_rcu;
-		struct llist_node mnt_llist;
+		struct llist_node mnt_llist;					// 链入到mnt_namespace的list域，代表同一mount命名空间的挂载实例
 	};
 #ifdef CONFIG_SMP
 	struct mnt_pcp __percpu *mnt_pcp;
 #else
-	int mnt_count;
+	int mnt_count;								// 引用计数
 	int mnt_writers;
 #endif
-	struct list_head mnt_mounts;	/* list of children, anchored here */
-	struct list_head mnt_child;	/* and going through their mnt_child */
+	struct list_head mnt_mounts;	/* list of children, anchored here */	// 指向装载到本挂载实例对应文件系统下的子文件系统挂载实例链表
+	struct list_head mnt_child;	/* and going through their mnt_child */	// 如果挂载实例有parent，链入parent挂载实例的mnt_mounts
 	struct list_head mnt_instance;	/* mount instance on sb->s_mounts */
-	const char *mnt_devname;	/* Name of device e.g. /dev/dsk/hda1 */
-	struct list_head mnt_list;
+	const char *mnt_devname;	/* Name of device e.g. /dev/dsk/hda1 */	// 设备名，例如/dev/sda
+	struct list_head mnt_list;						// 链入mount namespace的list链表，代表属于同一mnt namespace
 	struct list_head mnt_expire;	/* link in fs-specific expiry list */
-	struct list_head mnt_share;	/* circular list of shared mounts */
-	struct list_head mnt_slave_list;/* list of slave mounts */
-	struct list_head mnt_slave;	/* slave list entry */
-	struct mount *mnt_master;	/* slave is on master->mnt_slave_list */
-	struct mnt_namespace *mnt_ns;	/* containing namespace */
-	struct mountpoint *mnt_mp;	/* where is it mounted */
+	struct list_head mnt_share;	/* circular list of shared mounts */	// 链入peer group链表
+	struct list_head mnt_slave_list;/* list of slave mounts */		// 指向该装载实例下的slave group链表
+	struct list_head mnt_slave;	/* slave list entry */			// 链入某个slave group链表
+	struct mount *mnt_master;	/* slave is on master->mnt_slave_list */// 该装载实例的master
+	struct mnt_namespace *mnt_ns;	/* containing namespace */		// 指向挂载实例所处的mount命名空间
+	struct mountpoint *mnt_mp;	/* where is it mounted */		// 挂载点节点
 	union {
 		struct hlist_node mnt_mp_list;	/* list mounts with the same mountpoint */
 		struct hlist_node mnt_umount;
@@ -67,7 +67,7 @@ struct mount {
 	struct fsnotify_mark_connector __rcu *mnt_fsnotify_marks;
 	__u32 mnt_fsnotify_mask;
 #endif
-	int mnt_id;			/* mount identifier */
+	int mnt_id;			/* mount identifier */			// mount id
 	int mnt_group_id;		/* peer group identifier */
 	int mnt_expiry_mark;		/* true if marked for expiry */
 	struct hlist_head mnt_pins;

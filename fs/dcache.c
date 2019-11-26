@@ -1425,7 +1425,7 @@ int d_set_mounted(struct dentry *dentry)
 	for (p = dentry->d_parent; !IS_ROOT(p); p = p->d_parent) {
 		/* Need exclusion wrt. d_invalidate() */
 		spin_lock(&p->d_lock);
-		if (unlikely(d_unhashed(p))) {
+		if (unlikely(d_unhashed(p))) {					// 递归检查dentry的parent dentry是否已加入系统全局哈希表，只要有没加入哈希表的parent dentry就不要设置dentry的挂载标志位（不太可能发生）
 			spin_unlock(&p->d_lock);
 			goto out;
 		}
@@ -1435,7 +1435,7 @@ int d_set_mounted(struct dentry *dentry)
 	if (!d_unlinked(dentry)) {
 		ret = -EBUSY;
 		if (!d_mountpoint(dentry)) {
-			dentry->d_flags |= DCACHE_MOUNTED;
+			dentry->d_flags |= DCACHE_MOUNTED;			// 设置dentry标志，表面在该目录项已被挂载文件系统
 			ret = 0;
 		}
 	}

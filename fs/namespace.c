@@ -605,13 +605,13 @@ bool legitimize_mnt(struct vfsmount *bastard, unsigned seq)
  * find the first mount at @dentry on vfsmount @mnt.
  * call under rcu_read_lock()
  */
-struct mount *__lookup_mnt(struct vfsmount *mnt, struct dentry *dentry)
+struct mount *__lookup_mnt(struct vfsmount *mnt, struct dentry *dentry)		// 找到第一个在mnt挂载实例下dentry处挂载的mount实例
 {
 	struct hlist_head *head = m_hash(mnt, dentry);
 	struct mount *p;
 
 	hlist_for_each_entry_rcu(p, head, mnt_hash)
-		if (&p->mnt_parent->mnt == mnt && p->mnt_mountpoint == dentry)
+		if (&p->mnt_parent->mnt == mnt && p->mnt_mountpoint == dentry)	//	第一个在dentry处挂载的mount实例，其parent是dentry所在mount实例，其挂载点目录项是dentry
 			return p;
 	return NULL;
 }
@@ -632,7 +632,7 @@ struct mount *__lookup_mnt(struct vfsmount *mnt, struct dentry *dentry)
  *
  * lookup_mnt takes a reference to the found vfsmount.
  */
-struct vfsmount *lookup_mnt(const struct path *path)
+struct vfsmount *lookup_mnt(const struct path *path)				// 找到在path挂载的第一个vfs挂载实例，这些挂载实例相对于path所在的mount实例是child。例如/mnt下被顺序挂载了/dev/sda和/dev/sdb，那么调用lookup_mnt(path("/mnt"))会顺序返回/dev/sda对应挂载实例、/dev/sdb对应挂载实例和NULL
 {
 	struct mount *child_mnt;
 	struct vfsmount *m;
@@ -641,7 +641,7 @@ struct vfsmount *lookup_mnt(const struct path *path)
 	rcu_read_lock();
 	do {
 		seq = read_seqbegin(&mount_lock);
-		child_mnt = __lookup_mnt(path->mnt, path->dentry);
+		child_mnt = __lookup_mnt(path->mnt, path->dentry);		// 寻找第一个在path->dentry挂载的mount实例
 		m = child_mnt ? &child_mnt->mnt : NULL;
 	} while (!legitimize_mnt(m, seq));
 	rcu_read_unlock();
@@ -683,7 +683,7 @@ out:
 	return is_covered;
 }
 
-static struct mountpoint *lookup_mountpoint(struct dentry *dentry)
+static struct mountpoint *lookup_mountpoint(struct dentry *dentry)		// 从全局挂载点节点哈希表找到挂载目录项为dentry的挂载点节点并返回，对应挂载点节点引用计数+1
 {
 	struct hlist_head *chain = mp_hash(dentry);
 	struct mountpoint *mp;
@@ -702,26 +702,26 @@ static struct mountpoint *get_mountpoint(struct dentry *dentry)
 	struct mountpoint *mp, *new = NULL;
 	int ret;
 
-	if (d_mountpoint(dentry)) {
+	if (d_mountpoint(dentry)) {						// attach_recursive_mnt和lock_mount走这里，如果当前dentry是挂载点
 		/* might be worth a WARN_ON() */
-		if (d_unlinked(dentry))
+		if (d_unlinked(dentry))						// 不是根dentry也没有放到全局dentry哈希表，说明缓存中的dentry不应该存在
 			return ERR_PTR(-ENOENT);
 mountpoint:
 		read_seqlock_excl(&mount_lock);
-		mp = lookup_mountpoint(dentry);
+		mp = lookup_mountpoint(dentry);					// 从全局挂载点节点哈希表找到挂载目录项为dentry的挂载点节点并返回，对应挂载点节点引用计数+1
 		read_sequnlock_excl(&mount_lock);
 		if (mp)
 			goto done;
 	}
 
 	if (!new)
-		new = kmalloc(sizeof(struct mountpoint), GFP_KERNEL);
+		new = kmalloc(sizeof(struct mountpoint), GFP_KERNEL);		// 申请新的挂载点节点，lock_mount走这里
 	if (!new)
 		return ERR_PTR(-ENOMEM);
 
 
 	/* Exactly one processes may set d_mounted */
-	ret = d_set_mounted(dentry);
+	ret = d_set_mounted(dentry);						// 设置dentry的挂载标志，表示当前dentry是一个挂载点
 
 	/* Someone else set d_mounted? */
 	if (ret == -EBUSY)
@@ -734,9 +734,9 @@ mountpoint:
 
 	/* Add the new mountpoint to the hash table */
 	read_seqlock_excl(&mount_lock);
-	new->m_dentry = dget(dentry);
+	new->m_dentry = dget(dentry);						// 设置挂载点节点的挂载目录项[dentry]
 	new->m_count = 1;
-	hlist_add_head(&new->m_hash, mp_hash(dentry));
+	hlist_add_head(&new->m_hash, mp_hash(dentry));				// 加入挂载点节点到全局挂载点节点的hash表
 	INIT_HLIST_HEAD(&new->m_list);
 	read_sequnlock_excl(&mount_lock);
 
@@ -757,16 +757,16 @@ static void __put_mountpoint(struct mountpoint *mp, struct list_head *list)
 		struct dentry *dentry = mp->m_dentry;
 		BUG_ON(!hlist_empty(&mp->m_list));
 		spin_lock(&dentry->d_lock);
-		dentry->d_flags &= ~DCACHE_MOUNTED;
+		dentry->d_flags &= ~DCACHE_MOUNTED;				// 清位挂载点节点对应dentry的挂载标志位
 		spin_unlock(&dentry->d_lock);
 		dput_to_list(dentry, list);
-		hlist_del(&mp->m_hash);
-		kfree(mp);
+		hlist_del(&mp->m_hash);						// 从全局挂载点节点哈希表移除挂载点节点[mp]
+		kfree(mp);							// 释放挂载点节点
 	}
 }
 
 /* called with namespace_lock and vfsmount lock */
-static void put_mountpoint(struct mountpoint *mp)
+static void put_mountpoint(struct mountpoint *mp)				// 释放挂载点节点
 {
 	__put_mountpoint(mp, &ex_mountpoints);
 }
@@ -827,21 +827,21 @@ static void umount_mnt(struct mount *mnt)
  */
 void mnt_set_mountpoint(struct mount *mnt,
 			struct mountpoint *mp,
-			struct mount *child_mnt)
+			struct mount *child_mnt)				// 设置挂载点节点和挂载实例parent
 {
 	mp->m_count++;
-	mnt_add_count(mnt, 1);	/* essentially, that's mntget */
+	mnt_add_count(mnt, 1);	/* essentially, that's mntget */		// mnt多了一个子挂载实例，引用计数+1
 	child_mnt->mnt_mountpoint = mp->m_dentry;
-	child_mnt->mnt_parent = mnt;
-	child_mnt->mnt_mp = mp;
+	child_mnt->mnt_parent = mnt;						// 构建mount实例之间的父子关系，全局文件系统树
+	child_mnt->mnt_mp = mp;							// 挂载点节点赋值
 	hlist_add_head(&child_mnt->mnt_mp_list, &mp->m_list);
 }
 
-static void __attach_mnt(struct mount *mnt, struct mount *parent)
+static void __attach_mnt(struct mount *mnt, struct mount *parent)		// 加入mnt到对应链表
 {
 	hlist_add_head_rcu(&mnt->mnt_hash,
-			   m_hash(&parent->mnt, mnt->mnt_mountpoint));
-	list_add_tail(&mnt->mnt_child, &parent->mnt_mounts);
+			   m_hash(&parent->mnt, mnt->mnt_mountpoint));		// 把mnt加入到全局mount实例哈希表
+	list_add_tail(&mnt->mnt_child, &parent->mnt_mounts);			// 把mnt加入到parent mount实例children链表
 }
 
 /*
@@ -849,7 +849,7 @@ static void __attach_mnt(struct mount *mnt, struct mount *parent)
  */
 static void attach_mnt(struct mount *mnt,
 			struct mount *parent,
-			struct mountpoint *mp)
+			struct mountpoint *mp)					// 设置挂载实例的parent和挂载点节点属性
 {
 	mnt_set_mountpoint(parent, mp, mnt);
 	__attach_mnt(mnt, parent);
@@ -873,8 +873,8 @@ void mnt_change_mountpoint(struct mount *parent, struct mountpoint *mp, struct m
 /*
  * vfsmount lock must be held for write
  */
-static void commit_tree(struct mount *mnt)
-{
+static void commit_tree(struct mount *mnt)					// 新的mnt加入mnt->mnt_parent，要更新mnt->mnt_parent所在的mount namespace信息，凡是要挂到parent挂载实例的mount实例（连同其递归child构成的文件系统树上每个mount实例）的mount namespace都要和parent的mount namespace相同，也即，同一文件系统树上所有mount实例处于同一mount namespace
+{										// mount、mount --move、mount --(r)bind、finish_automount会走这里
 	struct mount *parent = mnt->mnt_parent;
 	struct mount *m;
 	LIST_HEAD(head);
@@ -883,19 +883,19 @@ static void commit_tree(struct mount *mnt)
 	BUG_ON(parent == mnt);
 
 	list_add_tail(&head, &mnt->mnt_list);
-	list_for_each_entry(m, &head, mnt_list)
+	list_for_each_entry(m, &head, mnt_list)					// mnt实例所在mount namespace的每个mount实例的mount namespace都变成mnt parent所在的mount namespace
 		m->mnt_ns = n;
 
-	list_splice(&head, n->list.prev);
+	list_splice(&head, n->list.prev);					// 把mnt所在mount namespace的所有mount实例都转移到mount parent的mount namespace list链表。mount --rbind会递归拷贝以mnt实例开始的文件系统树，每个节点包括mnt都在同一mount namespace(mnt_list)，所以所有节点都会和parent的mount namespace相同，处于同一个mnt_list链表。
 
-	n->mounts += n->pending_mounts;
-	n->pending_mounts = 0;
+	n->mounts += n->pending_mounts;						// mount namespace挂载数量更新，函数count_mounts会更新n->pending_mounts
+	n->pending_mounts = 0;							// pending mount数量清0
 
-	__attach_mnt(mnt, parent);
+	__attach_mnt(mnt, parent);						// mnt实例放入parent的child链表并加入全局哈希表
 	touch_mnt_namespace(n);
 }
 
-static struct mount *next_mnt(struct mount *p, struct mount *root)
+static struct mount *next_mnt(struct mount *p, struct mount *root)		// for (p = mnt; p; p = next_mnt(p, mnt))			// 递归遍历mnt实例以及mnt下所有child mount实例
 {
 	struct list_head *next = p->mnt_mounts.next;
 	if (next == &p->mnt_mounts) {
@@ -931,13 +931,13 @@ static struct mount *skip_mnt_tree(struct mount *p)
  * Note that this does not attach the mount to anything.
  */
 struct vfsmount *vfs_create_mount(struct fs_context *fc)
-{
+{										// init_mount_tree和do_new_mount会走这里
 	struct mount *mnt;
 
 	if (!fc->root)
 		return ERR_PTR(-EINVAL);
 
-	mnt = alloc_vfsmnt(fc->source ?: "none");
+	mnt = alloc_vfsmnt(fc->source ?: "none");				// 申请挂载实例
 	if (!mnt)
 		return ERR_PTR(-ENOMEM);
 
@@ -945,10 +945,10 @@ struct vfsmount *vfs_create_mount(struct fs_context *fc)
 		mnt->mnt.mnt_flags = MNT_INTERNAL;
 
 	atomic_inc(&fc->root->d_sb->s_active);
-	mnt->mnt.mnt_sb		= fc->root->d_sb;
-	mnt->mnt.mnt_root	= dget(fc->root);
-	mnt->mnt_mountpoint	= mnt->mnt.mnt_root;
-	mnt->mnt_parent		= mnt;
+	mnt->mnt.mnt_sb		= fc->root->d_sb;				// 装载实例对应的文件系统超级块，例如/dev/sda上文件系统的超级块赋值给挂载/dev/sda生成的装载实例
+	mnt->mnt.mnt_root	= dget(fc->root);				// 装载后文件系统的根目录项
+	mnt->mnt_mountpoint	= mnt->mnt.mnt_root;				// 挂载点节点，对于do_new_mount后续在装载mnt到全局文件系统树时赋值
+	mnt->mnt_parent		= mnt;						// 装载实例的parent，对于do_new_mount后续在装载mnt到全局文件系统树时赋值
 
 	lock_mount_hash();
 	list_add_tail(&mnt->mnt_instance, &mnt->mnt.mnt_sb->s_mounts);
@@ -1014,35 +1014,35 @@ vfs_submount(const struct dentry *mountpoint, struct file_system_type *type,
 EXPORT_SYMBOL_GPL(vfs_submount);
 
 static struct mount *clone_mnt(struct mount *old, struct dentry *root,
-					int flag)
+					int flag)				// 克隆mount实例，make --(r)bind和创建新的mount namespace会走clone_mnt，make --bind没有flag
 {
 	struct super_block *sb = old->mnt.mnt_sb;
 	struct mount *mnt;
 	int err;
 
-	mnt = alloc_vfsmnt(old->mnt_devname);
+	mnt = alloc_vfsmnt(old->mnt_devname);					// 克隆的mount实例沿用old挂载实例的dev_name
 	if (!mnt)
 		return ERR_PTR(-ENOMEM);
 
-	if (flag & (CL_SLAVE | CL_PRIVATE | CL_SHARED_TO_SLAVE))
+	if (flag & (CL_SLAVE | CL_PRIVATE | CL_SHARED_TO_SLAVE))		// 非shared标志位
 		mnt->mnt_group_id = 0; /* not a peer of original */
 	else
-		mnt->mnt_group_id = old->mnt_group_id;
+		mnt->mnt_group_id = old->mnt_group_id;				// 和old挂载实例的mnt_group_id一样，所以mount --(r)bind old_dir new_dir（或unshare）生成的mount实例最终和old_dir所在mount实例的mnt_group_id一样，如果old_dir所在mount实例的propagation type有shared标志位。
 
-	if ((flag & CL_MAKE_SHARED) && !mnt->mnt_group_id) {
+	if ((flag & CL_MAKE_SHARED) && !mnt->mnt_group_id) {			// 对于标志位CL_SLAVE和CL_MAKE_SHARED同时存在的情况，最后还是要为mnt实例申请新的mnt_group_id
 		err = mnt_alloc_group_id(mnt);
 		if (err)
 			goto out_free;
 	}
 
 	mnt->mnt.mnt_flags = old->mnt.mnt_flags;
-	mnt->mnt.mnt_flags &= ~(MNT_WRITE_HOLD|MNT_MARKED|MNT_INTERNAL);
+	mnt->mnt.mnt_flags &= ~(MNT_WRITE_HOLD|MNT_MARKED|MNT_INTERNAL);	// 克隆的mount实例继承old挂载实例的选项（包括propagation type），对于unshare系统调用是这样，但如果是mount --(r)bind，会在后续的attach_recursive_mnt判断dest_mnt的传播属性是shared来设置传播属性为shared
 
 	atomic_inc(&sb->s_active);
-	mnt->mnt.mnt_sb = sb;
-	mnt->mnt.mnt_root = dget(root);
-	mnt->mnt_mountpoint = mnt->mnt.mnt_root;
-	mnt->mnt_parent = mnt;
+	mnt->mnt.mnt_sb = sb;							// 克隆的mount实例使用old挂载实例所对应的超级块
+	mnt->mnt.mnt_root = dget(root);						// 克隆的mount实例的根目录项使用root
+	mnt->mnt_mountpoint = mnt->mnt.mnt_root;				// 挂载点节点，如果是copy_tree拷贝child mount实例调用后续会在copy_tree中赋值，否则后续在装载mnt到全局文件系统树时赋值
+	mnt->mnt_parent = mnt;							// 挂载实例parent，如果是copy_tree拷贝child mount实例调用后续会在copy_tree中赋值，否则后续在装载mnt到全局文件系统树时赋值
 	lock_mount_hash();
 	list_add_tail(&mnt->mnt_instance, &sb->s_mounts);
 	unlock_mount_hash();
@@ -1052,8 +1052,8 @@ static struct mount *clone_mnt(struct mount *old, struct dentry *root,
 		list_add(&mnt->mnt_slave, &old->mnt_slave_list);
 		mnt->mnt_master = old;
 		CLEAR_MNT_SHARED(mnt);
-	} else if (!(flag & CL_PRIVATE)) {
-		if ((flag & CL_MAKE_SHARED) || IS_MNT_SHARED(old))
+	} else if (!(flag & CL_PRIVATE)) {					// mount --r(bind)、mount和unshare会走这里
+		if ((flag & CL_MAKE_SHARED) || IS_MNT_SHARED(old))		// 如果old挂载实例是shared或者选项设置了shared，clone的mnt实例要和old处于同一shared list
 			list_add(&mnt->mnt_share, &old->mnt_share);
 		if (IS_MNT_SLAVE(old))
 			list_add(&mnt->mnt_slave, &old->mnt_slave);
@@ -1747,7 +1747,7 @@ static bool mnt_ns_loop(struct dentry *dentry)
 }
 
 struct mount *copy_tree(struct mount *mnt, struct dentry *dentry,
-					int flag)
+					int flag)				// 复制mount namespace和make --rbind时会将mnt及其所有子挂载实例拷贝，拷贝形成的clone mount实例之间的父子关系和原来一致，clone的mount实例节点的propagation type和原来对应的mount实例节点相同。用户态调用unshare -m bash命令会默认执行unshare -> copy_mnt_ns和mount --make-rprivate
 {
 	struct mount *res, *p, *q, *r, *parent;
 
@@ -1757,19 +1757,19 @@ struct mount *copy_tree(struct mount *mnt, struct dentry *dentry,
 	if (!(flag & CL_COPY_MNT_NS_FILE) && is_mnt_ns_file(dentry))
 		return ERR_PTR(-EINVAL);
 
-	res = q = clone_mnt(mnt, dentry, flag);
+	res = q = clone_mnt(mnt, dentry, flag);					// 克隆mnt挂载实例
 	if (IS_ERR(q))
 		return q;
 
 	q->mnt_mountpoint = mnt->mnt_mountpoint;
 
 	p = mnt;
-	list_for_each_entry(r, &mnt->mnt_mounts, mnt_child) {
+	list_for_each_entry(r, &mnt->mnt_mounts, mnt_child) {			// 递归克隆mnt下所有子文件系统的挂载实例，克隆后的mnt实例组成的文件系统树和mnt实例下文件系统树一样。p指向被clone的文件系统树某个节点，q是当前clone生成的文件系统树中某个节点（和p在文件系统树中的位置对应），parent是q的parent节点
 		struct mount *s;
 		if (!is_subdir(r->mnt_mountpoint, dentry))
 			continue;
 
-		for (s = r; s; s = next_mnt(s, r)) {
+		for (s = r; s; s = next_mnt(s, r)) {				// 处理r以及r下的所有子文件系统实例，r是mnt实例某一个child，s是r树中某个节点
 			if (!(flag & CL_COPY_UNBINDABLE) &&
 			    IS_MNT_UNBINDABLE(s)) {
 				if (s->mnt.mnt_flags & MNT_LOCKED) {
@@ -1786,18 +1786,18 @@ struct mount *copy_tree(struct mount *mnt, struct dentry *dentry,
 				s = skip_mnt_tree(s);
 				continue;
 			}
-			while (p != s->mnt_parent) {
-				p = p->mnt_parent;
-				q = q->mnt_parent;
-			}
+			while (p != s->mnt_parent) {				// 为了实现回溯，ra是mnt的一个child mount实例，例如克隆ra_2时，需要将p指向ra（ra_2的parent），q也要指向对应克隆树的ra_c节点(ra_2_c的parent)
+				p = p->mnt_parent;				//		ra                  ra_c(parent)
+				q = q->mnt_parent;				//	   /          \          /
+			}							//	ra_1(p)	   ra_2(s)   ra_1_c(q)
 			p = s;
 			parent = q;
 			q = clone_mnt(p, p->mnt.mnt_root, flag);
 			if (IS_ERR(q))
 				goto out;
 			lock_mount_hash();
-			list_add_tail(&q->mnt_list, &res->mnt_list);
-			attach_mnt(q, parent, p->mnt_mp);
+			list_add_tail(&q->mnt_list, &res->mnt_list);		// 文件系统树clone得到的每个节点的和res属于同一mount namespace
+			attach_mnt(q, parent, p->mnt_mp);			// 绑定clone挂载实例的父子关系和挂载点节点
 			unlock_mount_hash();
 		}
 	}
@@ -1935,7 +1935,7 @@ static void cleanup_group_ids(struct mount *mnt, struct mount *end)
 	}
 }
 
-static int invent_group_ids(struct mount *mnt, bool recurse)
+static int invent_group_ids(struct mount *mnt, bool recurse)			// mnt以及child mount（如果设置了recurse）实例如果propagation type是shared并且没有mnt_group_id都要重新申请mnt_group_id
 {
 	struct mount *p;
 
@@ -1954,23 +1954,23 @@ static int invent_group_ids(struct mount *mnt, bool recurse)
 
 int count_mounts(struct mnt_namespace *ns, struct mount *mnt)
 {
-	unsigned int max = READ_ONCE(sysctl_mount_max);
+	unsigned int max = READ_ONCE(sysctl_mount_max);				// 系统允许一个mount namespace最多有sysctl_mount_max[100000]个mount实例
 	unsigned int mounts = 0, old, pending, sum;
 	struct mount *p;
 
-	for (p = mnt; p; p = next_mnt(p, mnt))
+	for (p = mnt; p; p = next_mnt(p, mnt))					// 递归遍历mnt实例以及mnt下所有child mount实例，这些实例都要算在mount namespace中的mount数量下。所以对于mount --rbind，针对某个mount实例copy_tree后，整颗clone的mount实例tree上所有mount实例都要遍历到
 		mounts++;
 
 	old = ns->mounts;
 	pending = ns->pending_mounts;
-	sum = old + pending;
+	sum = old + pending;							// 当前mount namespace已经存在的mount实例数量
 	if ((old > sum) ||
 	    (pending > sum) ||
 	    (max < sum) ||
 	    (mounts > (max - sum)))
 		return -ENOSPC;
 
-	ns->pending_mounts = pending + mounts;
+	ns->pending_mounts = pending + mounts;					// 更新pending mount实例数量，会在commit_tree将ns->pending_mounts加到ns->mounts上
 	return 0;
 }
 
@@ -2041,10 +2041,10 @@ static int attach_recursive_mnt(struct mount *source_mnt,
 			struct mount *dest_mnt,
 			struct mountpoint *dest_mp,
 			bool moving)
-{
+{										// mount、mount --move、mount --(r)bind、finish_automount会走这里。添加挂载实例到全局文件系统树
 	struct user_namespace *user_ns = current->nsproxy->mnt_ns->user_ns;
 	HLIST_HEAD(tree_list);
-	struct mnt_namespace *ns = dest_mnt->mnt_ns;
+	struct mnt_namespace *ns = dest_mnt->mnt_ns;				// 目标挂载点对应的mount实例所在的mount namespace
 	struct mountpoint *smp;
 	struct mount *child, *p;
 	struct hlist_node *n;
@@ -2053,41 +2053,41 @@ static int attach_recursive_mnt(struct mount *source_mnt,
 	/* Preallocate a mountpoint in case the new mounts need
 	 * to be tucked under other mounts.
 	 */
-	smp = get_mountpoint(source_mnt->mnt.mnt_root);
+	smp = get_mountpoint(source_mnt->mnt.mnt_root);				// 获取挂载点节点，对应挂载点节点引用计数+1
 	if (IS_ERR(smp))
 		return PTR_ERR(smp);
 
 	/* Is there space to add these mounts to the mount namespace? */
-	if (!moving) {
-		err = count_mounts(ns, source_mnt);
+	if (!moving) {								// mount --(r)bind、finish_automount和mount会走这里
+		err = count_mounts(ns, source_mnt);				// dest_mnt实例所在mnt_namespace下的挂载实例数量加上source_mnt实例下所有children实例数量不得超过sysctl_mount_max[100000]。mount --rbind新建的source_mnt实例可能有child mnt实例
 		if (err)
 			goto out;
 	}
 
-	if (IS_MNT_SHARED(dest_mnt)) {
-		err = invent_group_ids(source_mnt, true);
+	if (IS_MNT_SHARED(dest_mnt)) {						// 如果dest_mnt实例的propagation type包括shared，对应的挂载操作应该传播给同一peer group中的其他mount实例和slave group中的mount实例，并将新的挂载实例下所有递归child mount实例的传播属性设置为shared
+		err = invent_group_ids(source_mnt, true);			// source_mnt及其child mount实例如果propagation type是shared并且没有mnt_group_id都要重新申请mnt_group_id
 		if (err)
 			goto out;
-		err = propagate_mnt(dest_mnt, dest_mp, source_mnt, &tree_list);
+		err = propagate_mnt(dest_mnt, dest_mp, source_mnt, &tree_list);	// 挂载操作在dest_mnt的peer group和slave group中传播
 		lock_mount_hash();
 		if (err)
 			goto out_cleanup_ids;
-		for (p = source_mnt; p; p = next_mnt(p, source_mnt))
-			set_mnt_shared(p);
+		for (p = source_mnt; p; p = next_mnt(p, source_mnt))		// 所有要挂载到dest_mnt实例的mount实例（以及它的child mount实例）都要设置propagation type为shared，因为dest_mnt实例的传播属性是shared，所以cat /proc/pid/mountinfo看到有些mount实例同时包含master和shared，应该是先mount --make-slave，然后再mount --make-shared或mount --bind到传播属性为shared的mount实例下
+			set_mnt_shared(p);					// source_mnt以及child mount实例的propagation type都应该置上shared标志位
 	} else {
 		lock_mount_hash();
 	}
-	if (moving) {
+	if (moving) {								// mount --move会走这里
 		unhash_mnt(source_mnt);
 		attach_mnt(source_mnt, dest_mnt, dest_mp);
 		touch_mnt_namespace(source_mnt->mnt_ns);
-	} else {
+	} else {								// mount --(r)bind、finish_automount和mount会走这里，mount --move如果old path没有parent也会走这里
 		if (source_mnt->mnt_ns) {
 			/* move from anon - the caller will destroy */
-			list_del_init(&source_mnt->mnt_ns->list);
+			list_del_init(&source_mnt->mnt_ns->list);		// 清空source mount实例所在mount namespace的list链表，一般source_mnt都是新生成的，还没有对应的mnt_ns，主要为mount --move预留
 		}
-		mnt_set_mountpoint(dest_mnt, dest_mp, source_mnt);
-		commit_tree(source_mnt);
+		mnt_set_mountpoint(dest_mnt, dest_mp, source_mnt);		// 设置source_mnt挂载实例的parent
+		commit_tree(source_mnt);					// 提交文件系统树，更新mount namespace的mount数量
 	}
 
 	hlist_for_each_entry_safe(child, n, &tree_list, mnt_hash) {
@@ -2103,7 +2103,7 @@ static int attach_recursive_mnt(struct mount *source_mnt,
 		child->mnt.mnt_flags &= ~MNT_LOCKED;
 		commit_tree(child);
 	}
-	put_mountpoint(smp);
+	put_mountpoint(smp);							// 释放挂载点节点，引用计数-1，如果引用计数减成0，释放挂载点节点并将挂载点对应dentry的挂载标志位清位
 	unlock_mount_hash();
 
 	return 0;
@@ -2126,7 +2126,7 @@ static int attach_recursive_mnt(struct mount *source_mnt,
 	return err;
 }
 
-static struct mountpoint *lock_mount(struct path *path)
+static struct mountpoint *lock_mount(struct path *path)				// 申请新的挂载点节点，挂载点节点对应的dentry是最后一个挂载在path->dentry文件系统对应的根dentry，同理path->mnt也被替换为最后一个挂载在path的mount实例
 {
 	struct vfsmount *mnt;
 	struct dentry *dentry = path->dentry;
@@ -2137,9 +2137,9 @@ retry:
 		return ERR_PTR(-ENOENT);
 	}
 	namespace_lock();
-	mnt = lookup_mnt(path);
-	if (likely(!mnt)) {
-		struct mountpoint *mp = get_mountpoint(dentry);
+	mnt = lookup_mnt(path);							// 返回第一个在path所在mount实例中path->dentry处挂载的vfs mount实例
+	if (likely(!mnt)) {							// 如果path所在mount实例的path->dentry处没有挂载其它文件系统
+		struct mountpoint *mp = get_mountpoint(dentry);			// 生成挂载点节点，绑定到dentry所在mount实例文件系统下对应的目录项
 		if (IS_ERR(mp)) {
 			namespace_unlock();
 			inode_unlock(dentry->d_inode);
@@ -2149,8 +2149,8 @@ retry:
 	}
 	namespace_unlock();
 	inode_unlock(path->dentry->d_inode);
-	path_put(path);
-	path->mnt = mnt;
+	path_put(path);								// 如果path所在mount实例的path->dentry处已经挂载了其它文件系统，递归顺序查找挂载的其它文件系统，直到path->dentry处没有挂载任何文件系统、例如/挂载在/dev/dm设备下，/mnt顺序挂载了/dev/sda、/dev/sdb，lock_mount逐层查找后，将生成新的挂载点节点并锁定在/dev/sdb挂载实例对应的/目录项下
+	path->mnt = mnt;							// 替换path->mnt为对应的挂载实例
 	dentry = path->dentry = dget(mnt->mnt_root);
 	goto retry;
 }
@@ -2168,15 +2168,15 @@ static void unlock_mount(struct mountpoint *where)
 }
 
 static int graft_tree(struct mount *mnt, struct mount *p, struct mountpoint *mp)
-{
+{										// // 将新mnt实例以p为parent mount实例加入到全局文件系统树，挂载点节点为mp。do_loopback和do_add_mount调用
 	if (mnt->mnt.mnt_sb->s_flags & SB_NOUSER)
 		return -EINVAL;
 
 	if (d_is_dir(mp->m_dentry) !=
-	      d_is_dir(mnt->mnt.mnt_root))
+	      d_is_dir(mnt->mnt.mnt_root))					// 挂载点应该是一个目录
 		return -ENOTDIR;
 
-	return attach_recursive_mnt(mnt, p, mp, false);
+	return attach_recursive_mnt(mnt, p, mp, false);				// 加入mnt到全局文件系统树，以p为parent
 }
 
 /*
@@ -2199,8 +2199,8 @@ static int flags_to_propagation_type(int ms_flags)
 /*
  * recursively change the type of the mountpoint.
  */
-static int do_change_type(struct path *path, int ms_flags)
-{
+static int do_change_type(struct path *path, int ms_flags)			// 改变装载实例的传播属性
+{										// mount --make-r(private|shared|slave|unbindable)
 	struct mount *m;
 	struct mount *mnt = real_mount(path->mnt);
 	int recurse = ms_flags & MS_REC;
@@ -2216,14 +2216,14 @@ static int do_change_type(struct path *path, int ms_flags)
 
 	namespace_lock();
 	if (type == MS_SHARED) {
-		err = invent_group_ids(mnt, recurse);
+		err = invent_group_ids(mnt, recurse);				// 为mnt装载实例分配mnt_group_id
 		if (err)
 			goto out_unlock;
 	}
 
 	lock_mount_hash();
-	for (m = mnt; m; m = (recurse ? next_mnt(m, mnt) : NULL))
-		change_mnt_propagation(m, type);
+	for (m = mnt; m; m = (recurse ? next_mnt(m, mnt) : NULL))		// 递归遍历mnt以及下面所有child mount实例
+		change_mnt_propagation(m, type);				// 改变装载实例的传播属性
 	unlock_mount_hash();
 
  out_unlock:
@@ -2248,7 +2248,7 @@ static struct mount *__do_loopback(struct path *old_path, int recurse)
 {
 	struct mount *mnt = ERR_PTR(-EINVAL), *old = real_mount(old_path->mnt);
 
-	if (IS_MNT_UNBINDABLE(old))
+	if (IS_MNT_UNBINDABLE(old))						// (被mount --make-unbindable)设置了unbindable标记的mount实例不能被mount --bind
 		return mnt;
 
 	if (!check_mnt(old) && old_path->dentry->d_op != &ns_dentry_operations)
@@ -2257,10 +2257,10 @@ static struct mount *__do_loopback(struct path *old_path, int recurse)
 	if (!recurse && has_locked_children(old, old_path->dentry))
 		return mnt;
 
-	if (recurse)
-		mnt = copy_tree(old, old_path->dentry, CL_COPY_MNT_NS_FILE);
-	else
-		mnt = clone_mnt(old, old_path->dentry, 0);
+	if (recurse)								// 对于mount --rbind
+		mnt = copy_tree(old, old_path->dentry, CL_COPY_MNT_NS_FILE);	// 递归拷贝old及其child mount实例
+	else									// 对于mount --bind
+		mnt = clone_mnt(old, old_path->dentry, 0);			// 拷贝old mount实例
 
 	if (!IS_ERR(mnt))
 		mnt->mnt.mnt_flags &= ~MNT_LOCKED;
@@ -2272,7 +2272,7 @@ static struct mount *__do_loopback(struct path *old_path, int recurse)
  * do loopback mount.
  */
 static int do_loopback(struct path *path, const char *old_name,
-				int recurse)
+				int recurse)					// mount --make-(r)bind会走这里，把old_name(dev)path挂载到path，如果path所在mount实例的传播属性是shared，新的mount实例的传播属性是shared，否则新的mount实例的传播属性和old_name所在mount实例传播属性一致
 {
 	struct path old_path;
 	struct mount *mnt = NULL, *parent;
@@ -2280,7 +2280,7 @@ static int do_loopback(struct path *path, const char *old_name,
 	int err;
 	if (!old_name || !*old_name)
 		return -EINVAL;
-	err = kern_path(old_name, LOOKUP_FOLLOW|LOOKUP_AUTOMOUNT, &old_path);
+	err = kern_path(old_name, LOOKUP_FOLLOW|LOOKUP_AUTOMOUNT, &old_path);	// 找到old_name对应的path
 	if (err)
 		return err;
 
@@ -2288,7 +2288,7 @@ static int do_loopback(struct path *path, const char *old_name,
 	if (mnt_ns_loop(old_path.dentry))
 		goto out;
 
-	mp = lock_mount(path);
+	mp = lock_mount(path);							// 申请新的挂载点节点，挂载点节点对应的dentry是最后一个挂载在path->dentry文件系统对应的根dentry，同理path->mnt也被替换为最后一个挂载在path的mount实例
 	if (IS_ERR(mp)) {
 		err = PTR_ERR(mp);
 		goto out;
@@ -2304,7 +2304,7 @@ static int do_loopback(struct path *path, const char *old_name,
 		goto out2;
 	}
 
-	err = graft_tree(mnt, parent, mp);
+	err = graft_tree(mnt, parent, mp);					// 将文件系统装载实例安装到全局文件系统树
 	if (err) {
 		lock_mount_hash();
 		umount_tree(mnt, UMOUNT_SYNC);
@@ -2695,19 +2695,19 @@ static int do_move_mount_old(struct path *path, const char *old_name)
 /*
  * add a mount into a namespace's mount tree
  */
-static int do_add_mount(struct mount *newmnt, struct path *path, int mnt_flags)
-{
+static int do_add_mount(struct mount *newmnt, struct path *path, int mnt_flags)	// 装载newmnt到全局文件系统树
+{										// mount新文件系统和finish_automount会走这里
 	struct mountpoint *mp;
 	struct mount *parent;
 	int err;
 
 	mnt_flags &= ~MNT_INTERNAL_FLAGS;
 
-	mp = lock_mount(path);
+	mp = lock_mount(path);							// 申请新的挂载点节点，挂载点节点对应的dentry是最后一个挂载在path->dentry文件系统对应的根dentry，同理path->mnt也被替换成最后一个挂载的文件系统对应的mount实例
 	if (IS_ERR(mp))
 		return PTR_ERR(mp);
 
-	parent = real_mount(path->mnt);
+	parent = real_mount(path->mnt);						// path(/mnt或已挂载其他文件系统的/)对应文件系统的挂载实例
 	err = -EINVAL;
 	if (unlikely(!check_mnt(parent))) {
 		/* that's acceptable only for automounts done in private ns */
@@ -2721,15 +2721,15 @@ static int do_add_mount(struct mount *newmnt, struct path *path, int mnt_flags)
 	/* Refuse the same filesystem on the same mount point */
 	err = -EBUSY;
 	if (path->mnt->mnt_sb == newmnt->mnt.mnt_sb &&
-	    path->mnt->mnt_root == path->dentry)
+	    path->mnt->mnt_root == path->dentry)				// 不能把同一个文件系统挂载到同一个挂载点
 		goto unlock;
 
 	err = -EINVAL;
-	if (d_is_symlink(newmnt->mnt.mnt_root))
+	if (d_is_symlink(newmnt->mnt.mnt_root))					// 新的挂载实例对应的根目录项不应该是一个符号链接，要求具体文件系统mount返回的dentry不能是符号链接
 		goto unlock;
 
-	newmnt->mnt.mnt_flags = mnt_flags;
-	err = graft_tree(newmnt, parent, mp);
+	newmnt->mnt.mnt_flags = mnt_flags;					// 用户态传入的挂载标志位赋值
+	err = graft_tree(newmnt, parent, mp);					// 将文件系统装载实例安装到全局文件系统树
 
 unlock:
 	unlock_mount(mp);
@@ -2743,7 +2743,7 @@ static bool mount_too_revealing(const struct super_block *sb, int *new_mnt_flags
  * be added to the namespace tree.
  */
 static int do_new_mount_fc(struct fs_context *fc, struct path *mountpoint,
-			   unsigned int mnt_flags)
+			   unsigned int mnt_flags)				// mount新文件系统会走这里
 {
 	struct vfsmount *mnt;
 	struct super_block *sb = fc->root->d_sb;
@@ -2760,11 +2760,11 @@ static int do_new_mount_fc(struct fs_context *fc, struct path *mountpoint,
 
 	up_write(&sb->s_umount);
 
-	mnt = vfs_create_mount(fc);
+	mnt = vfs_create_mount(fc);						// 生成装载实例mnt
 	if (IS_ERR(mnt))
 		return PTR_ERR(mnt);
 
-	error = do_add_mount(real_mount(mnt), mountpoint, mnt_flags);
+	error = do_add_mount(real_mount(mnt), mountpoint, mnt_flags);		// 装载mnt到全局文件系统树
 	if (error < 0) {
 		mntput(mnt);
 		return error;
@@ -2820,9 +2820,9 @@ static int do_new_mount(struct path *path, const char *fstype, int sb_flags,
 	if (!err && !mount_capable(fc))
 		err = -EPERM;
 	if (!err)
-		err = vfs_get_tree(fc);
+		err = vfs_get_tree(fc);						// 生成具体文件系统的根目录项（作为新挂载文件系统树的root）
 	if (!err)
-		err = do_new_mount_fc(fc, path, mnt_flags);
+		err = do_new_mount_fc(fc, path, mnt_flags);			// 申请装载实例并挂载到全局文件系统树
 
 	put_fs_context(fc);
 	return err;
@@ -3067,7 +3067,7 @@ long do_mount(const char *dev_name, const char __user *dir_name,
 	int retval = 0;
 
 	/* Discard magic */
-	if ((flags & MS_MGC_MSK) == MS_MGC_VAL)
+	if ((flags & MS_MGC_MSK) == MS_MGC_VAL)					// mount不加任何flags时（mount不带--make-private,--make-slave,ro等），后续处理flags=0，一般的mount flag都是MS_MGC_VAL
 		flags &= ~MS_MGC_MSK;
 
 	/* Basic sanity checks */
@@ -3078,7 +3078,7 @@ long do_mount(const char *dev_name, const char __user *dir_name,
 		return -EINVAL;
 
 	/* ... and get the mountpoint */
-	retval = user_path_at(AT_FDCWD, dir_name, LOOKUP_FOLLOW, &path);
+	retval = user_path_at(AT_FDCWD, dir_name, LOOKUP_FOLLOW, &path);	// 找到挂载路径路径(/mnt)对应的path
 	if (retval)
 		return retval;
 
@@ -3133,13 +3133,13 @@ long do_mount(const char *dev_name, const char __user *dir_name,
 	else if (flags & MS_REMOUNT)
 		retval = do_remount(&path, flags, sb_flags, mnt_flags,
 				    data_page);
-	else if (flags & MS_BIND)
-		retval = do_loopback(&path, dev_name, flags & MS_REC);
-	else if (flags & (MS_SHARED | MS_PRIVATE | MS_SLAVE | MS_UNBINDABLE))
+	else if (flags & MS_BIND)						// mount --make-(r)bind，可以mount目录A到目录B
+		retval = do_loopback(&path, dev_name, flags & MS_REC);		// mount --bind bind1 bind2  ->  MS_MGC_VAL | MS_BIND
+	else if (flags & (MS_SHARED | MS_PRIVATE | MS_SLAVE | MS_UNBINDABLE))	// mount --make-(r)(shared|private|slave|unbindable)，propagation type（传播类型）
 		retval = do_change_type(&path, flags);
-	else if (flags & MS_MOVE)
+	else if (flags & MS_MOVE)						// mount --move，移动挂载点
 		retval = do_move_mount_old(&path, dev_name);
-	else
+	else									// mount dev dir一般创建新的mount实例会走这里
 		retval = do_new_mount(&path, type_page, sb_flags, mnt_flags,
 				      dev_name, data_page);
 dput_out:
@@ -3211,7 +3211,7 @@ static struct mnt_namespace *alloc_mnt_ns(struct user_namespace *user_ns, bool a
 
 __latent_entropy
 struct mnt_namespace *copy_mnt_ns(unsigned long flags, struct mnt_namespace *ns,
-		struct user_namespace *user_ns, struct fs_struct *new_fs)
+		struct user_namespace *user_ns, struct fs_struct *new_fs)	// 用户态调用unshare -m bash命令会默认执行unshare -> copy_mnt_ns和mount --make-rprivate
 {
 	struct mnt_namespace *new_ns;
 	struct vfsmount *rootmnt = NULL, *pwdmnt = NULL;
@@ -3229,7 +3229,7 @@ struct mnt_namespace *copy_mnt_ns(unsigned long flags, struct mnt_namespace *ns,
 
 	old = ns->root;
 
-	new_ns = alloc_mnt_ns(user_ns, false);
+	new_ns = alloc_mnt_ns(user_ns, false);					// 申请新的mount namespace
 	if (IS_ERR(new_ns))
 		return new_ns;
 
@@ -3238,7 +3238,7 @@ struct mnt_namespace *copy_mnt_ns(unsigned long flags, struct mnt_namespace *ns,
 	copy_flags = CL_COPY_UNBINDABLE | CL_EXPIRE;
 	if (user_ns != ns->user_ns)
 		copy_flags |= CL_SHARED_TO_SLAVE;
-	new = copy_tree(old, old->mnt.mnt_root, copy_flags);
+	new = copy_tree(old, old->mnt.mnt_root, copy_flags);			// 克隆以old mount实例为根的文件系统树下所有mount实例
 	if (IS_ERR(new)) {
 		namespace_unlock();
 		free_mnt_ns(new_ns);
@@ -3249,8 +3249,8 @@ struct mnt_namespace *copy_mnt_ns(unsigned long flags, struct mnt_namespace *ns,
 		lock_mnt_tree(new);
 		unlock_mount_hash();
 	}
-	new_ns->root = new;
-	list_add_tail(&new_ns->list, &new->mnt_list);
+	new_ns->root = new;							// 新mount namespace的根文件系统对应的装载实例是拷贝过来的文件系统树根mount实例
+	list_add_tail(&new_ns->list, &new->mnt_list);				// 加入新的mount实例及其cloned child mount实例到mount namespace链表，new->mnt_list已经在copy_tree中把所有new挂载实例的所有child mount实例链接进去
 
 	/*
 	 * Second pass: switch the tsk->fs->* elements and mark new vfsmounts
@@ -3260,7 +3260,7 @@ struct mnt_namespace *copy_mnt_ns(unsigned long flags, struct mnt_namespace *ns,
 	p = old;
 	q = new;
 	while (p) {
-		q->mnt_ns = new_ns;
+		q->mnt_ns = new_ns;						// 递归设置clone的装载实例的命名空间为新的命名空间
 		new_ns->mounts++;
 		if (new_fs) {
 			if (&p->mnt == new_fs->root.mnt) {
@@ -3328,28 +3328,28 @@ EXPORT_SYMBOL(mount_subtree);
 
 int ksys_mount(const char __user *dev_name, const char __user *dir_name,
 	       const char __user *type, unsigned long flags, void __user *data)
-{
+{										// mount系统调用，mount -t ext4 /dev/sda /mnt
 	int ret;
 	char *kernel_type;
 	char *kernel_dev;
 	void *options;
 
-	kernel_type = copy_mount_string(type);
+	kernel_type = copy_mount_string(type);					// 文件系统类型，例如ext4
 	ret = PTR_ERR(kernel_type);
 	if (IS_ERR(kernel_type))
 		goto out_type;
 
-	kernel_dev = copy_mount_string(dev_name);
+	kernel_dev = copy_mount_string(dev_name);				// 设备名，例如/dev/sda
 	ret = PTR_ERR(kernel_dev);
 	if (IS_ERR(kernel_dev))
 		goto out_dev;
 
-	options = copy_mount_options(data);
+	options = copy_mount_options(data);					// 挂载选项，例如-o rw
 	ret = PTR_ERR(options);
 	if (IS_ERR(options))
 		goto out_data;
 
-	ret = do_mount(kernel_dev, dir_name, kernel_type, flags, options);
+	ret = do_mount(kernel_dev, dir_name, kernel_type, flags, options);	// 执行挂载操作
 
 	kfree(options);
 out_data:
@@ -3363,7 +3363,7 @@ out_type:
 SYSCALL_DEFINE5(mount, char __user *, dev_name, char __user *, dir_name,
 		char __user *, type, unsigned long, flags, void __user *, data)
 {
-	return ksys_mount(dev_name, dir_name, type, flags, data);
+	return ksys_mount(dev_name, dir_name, type, flags, data);		// mount系统调用
 }
 
 /*

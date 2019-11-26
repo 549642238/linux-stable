@@ -1528,7 +1528,7 @@ EXPORT_SYMBOL(mount_single);
  * be used for mounting.  The filesystem places a pointer to the root to be
  * used for mounting in @fc->root.
  */
-int vfs_get_tree(struct fs_context *fc)
+int vfs_get_tree(struct fs_context *fc)						// mount新文件系统会走这里，调用具体文件系统接口生成根目录项作为挂载后文件系统树的root
 {
 	struct super_block *sb;
 	int error;
@@ -1539,7 +1539,7 @@ int vfs_get_tree(struct fs_context *fc)
 	/* Get the mountable root in fc->root, with a ref on the root and a ref
 	 * on the superblock.
 	 */
-	error = fc->ops->get_tree(fc);
+	error = fc->ops->get_tree(fc);						// 通过legacy_get_tree调用具体文件系统mount接口，返回的根dentry放置于fc->root
 	if (error < 0)
 		return error;
 

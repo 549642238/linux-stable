@@ -137,7 +137,7 @@ static int show_mountinfo(struct seq_file *m, struct vfsmount *mnt)
 	int err;
 
 	seq_printf(m, "%i %i %u:%u ", r->mnt_id, r->mnt_parent->mnt_id,
-		   MAJOR(sb->s_dev), MINOR(sb->s_dev));
+		   MAJOR(sb->s_dev), MINOR(sb->s_dev));				// 装载实例id，parent id，装载超级块主设备号和次设备号
 	if (sb->s_op->show_path) {
 		err = sb->s_op->show_path(m, mnt->mnt_root);
 		if (err)
@@ -152,20 +152,20 @@ static int show_mountinfo(struct seq_file *m, struct vfsmount *mnt)
 	if (err)
 		goto out;
 
-	seq_puts(m, mnt->mnt_flags & MNT_READONLY ? " ro" : " rw");
+	seq_puts(m, mnt->mnt_flags & MNT_READONLY ? " ro" : " rw");		// 装载选项是否有只读
 	show_mnt_opts(m, mnt);
 
 	/* Tagged fields ("foo:X" or "bar") */
-	if (IS_MNT_SHARED(r))
-		seq_printf(m, " shared:%i", r->mnt_group_id);
-	if (IS_MNT_SLAVE(r)) {
+	if (IS_MNT_SHARED(r))							// 如果装载实例的传播属性有shared
+		seq_printf(m, " shared:%i", r->mnt_group_id);			// 装载实例的mnt_group_id
+	if (IS_MNT_SLAVE(r)) {							// 如果装载实例有设置mnt_master
 		int master = r->mnt_master->mnt_group_id;
 		int dom = get_dominating_id(r, &p->root);
-		seq_printf(m, " master:%i", master);
+		seq_printf(m, " master:%i", master);				// 打印装载实例master的mnt_group_id
 		if (dom && dom != master)
 			seq_printf(m, " propagate_from:%i", dom);
 	}
-	if (IS_MNT_UNBINDABLE(r))
+	if (IS_MNT_UNBINDABLE(r))						// 如果装载实例的传播属性有unbindable
 		seq_puts(m, " unbindable");
 
 	/* Filesystem specific data */
