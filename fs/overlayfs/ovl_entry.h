@@ -5,7 +5,7 @@
  * Copyright (C) 2016 Red Hat, Inc.
  */
 
-struct ovl_config {
+struct ovl_config {								// 配置，从用户态传入参数解析得到该结构体
 	char *lowerdir;
 	char *upperdir;
 	char *workdir;
@@ -25,9 +25,9 @@ struct ovl_sb {
 };
 
 struct ovl_layer {
-	struct vfsmount *mnt;
+	struct vfsmount *mnt;							// 该层对应系统克隆的vfsmount
 	/* Trap in ovl inode cache */
-	struct inode *trap;
+	struct inode *trap;							// 存放改成打上“trap”标记的root inode
 	struct ovl_sb *fs;
 	/* Index of this layer in fs root (upper idx == 0) */
 	int idx;
@@ -42,7 +42,7 @@ struct ovl_path {
 
 /* private information held for overlayfs's superblock */
 struct ovl_fs {
-	struct vfsmount *upper_mnt;						// 如果有upper层，根目录指向upper层文件系统的vfsmount
+	struct vfsmount *upper_mnt;						// 如果有upper层，根目录指向从upper层文件系统克隆的vfsmount
 	unsigned int numlower;							// 有几个lower层，没有则为0
 	/* Number of unique lower sb that differ from upper sb */
 	unsigned int numlowerfs;
@@ -65,9 +65,9 @@ struct ovl_fs {
 	bool upperdir_locked;
 	bool workdir_locked;
 	/* Traps in ovl inode cache */
-	struct inode *upperdir_trap;
-	struct inode *workbasedir_trap;
-	struct inode *workdir_trap;
+	struct inode *upperdir_trap;						// upper层置上“trap”标记的root inode
+	struct inode *workbasedir_trap;						// $WORKDIR置上“trap”标记的inode
+	struct inode *workdir_trap;						// $WORKDIR/work置上“trap”标记的inode
 	struct inode *indexdir_trap;
 	/* Inode numbers in all layers do not use the high xino_bits */
 	unsigned int xino_bits;

@@ -1133,14 +1133,14 @@ struct inode *iget5_locked(struct super_block *sb, unsigned long hashval,
 		int (*test)(struct inode *, void *),
 		int (*set)(struct inode *, void *), void *data)
 {
-	struct inode *inode = ilookup5(sb, hashval, test, data);
+	struct inode *inode = ilookup5(sb, hashval, test, data);		// 从哈希表找到对应<sb, data>的inode
 
 	if (!inode) {
-		struct inode *new = alloc_inode(sb);
+		struct inode *new = alloc_inode(sb);				// 如果不在，申请新的inode
 
 		if (new) {
 			new->i_state = 0;
-			inode = inode_insert5(new, hashval, test, set, data);
+			inode = inode_insert5(new, hashval, test, set, data);	// 将新的inode插入哈希表，同时置上I_NEW标志位
 			if (unlikely(inode != new))
 				destroy_inode(new);
 		}

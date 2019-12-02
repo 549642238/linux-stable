@@ -777,12 +777,12 @@ static int ovl_check_namelen(struct path *path, struct ovl_fs *ofs,
 }
 
 static int ovl_lower_dir(const char *name, struct path *path,
-			 struct ovl_fs *ofs, int *stack_depth, bool *remote)
+			 struct ovl_fs *ofs, int *stack_depth, bool *remote)	// 路径查找，根据name找到具体文件系统的目录对应的path
 {
 	int fh_type;
 	int err;
 
-	err = ovl_mount_dir_noesc(name, path);					// 根据路径名name找到对应文件并放置在path
+	err = ovl_mount_dir_noesc(name, path);					// 根据路径名name找到对应目录并放置在path
 	if (err)
 		goto out;
 
@@ -987,12 +987,12 @@ static const struct xattr_handler *ovl_xattr_handlers[] = {
 };
 
 static int ovl_setup_trap(struct super_block *sb, struct dentry *dir,
-			  struct inode **ptrap, const char *name)
+			  struct inode **ptrap, const char *name)		// 检查哈希表是否存在置上“trap”标记的inode和dir对应的inode相同，如果有则证明overlay层之间发生重叠返回错误，如果没有为dir的inode则打上“trap”标记并放入哈希表
 {
 	struct inode *trap;
 	int err;
 
-	trap = ovl_get_trap_inode(sb, dir);
+	trap = ovl_get_trap_inode(sb, dir);					// 检查哈希表是否存在置上“trap”标记的inode和dir对应的inode相同，如果有则证明overlay层之间发生重叠返回错误，如果没有为dir的inode则打上“trap”标记并放入哈希表，返回打上“trap”标记的inode
 	err = PTR_ERR_OR_ZERO(trap);
 	if (err) {
 		if (err == -ELOOP)
@@ -1045,7 +1045,7 @@ static int ovl_get_upper(struct super_block *sb, struct ovl_fs *ofs,
 		goto out;
 
 	err = ovl_setup_trap(sb, upperpath->dentry, &ofs->upperdir_trap,
-			     "upperdir");
+			     "upperdir");					// 检查哈希表是否已有置上“trap”标记的ofs->upperdir_trap对应inode，如果没有则打上“trap”标记并放入哈希表
 	if (err)
 		goto out;
 
@@ -1060,7 +1060,7 @@ static int ovl_get_upper(struct super_block *sb, struct ovl_fs *ofs,
 	upper_mnt->mnt_flags &= ~(MNT_NOATIME | MNT_NODIRATIME | MNT_RELATIME);
 	ofs->upper_mnt = upper_mnt;						// 初始化overlay文件系统实例的upper_mnt
 
-	if (ovl_inuse_trylock(ofs->upper_mnt->mnt_root)) {
+	if (ovl_inuse_trylock(ofs->upper_mnt->mnt_root)) {			// 检查upper层root inode是否有“I_OVL_INUSE”标记，如果没有则打上“I_OVL_INUSE”标记，如果有则说明upper层的目录被其他overlay文件系统使用，再次重用会给出警告
 		ofs->upperdir_locked = true;
 	} else {
 		err = ovl_report_in_use(ofs, "upperdir");
@@ -1089,7 +1089,7 @@ static int ovl_make_workdir(struct super_block *sb, struct ovl_fs *ofs,
 	if (!ofs->workdir)
 		goto out;
 
-	err = ovl_setup_trap(sb, ofs->workdir, &ofs->workdir_trap, "workdir");
+	err = ovl_setup_trap(sb, ofs->workdir, &ofs->workdir_trap, "workdir");	// 检查哈希表是否已有置上“trap”标记的ofs->workdir对应inode，如果没有则打上“trap”标记并放入哈希表，ofs->workdir是实际的工作目录，对应用户指定的workdir下的“work”目录
 	if (err)
 		goto out;
 
@@ -1164,7 +1164,7 @@ static int ovl_get_workdir(struct super_block *sb, struct ovl_fs *ofs,
 		goto out;
 
 	err = -EINVAL;
-	if (upperpath->mnt != workpath.mnt) {					// overlay要求workdir和upperdir必须在同一个vfsmount实例下
+	if (upperpath->mnt != workpath.mnt) {					// overlay要求workdir和upperdir必须在同一个装载实例下
 		pr_err("overlayfs: workdir and upperdir must reside under the same mount\n");
 		goto out;
 	}
@@ -1175,7 +1175,7 @@ static int ovl_get_workdir(struct super_block *sb, struct ovl_fs *ofs,
 
 	ofs->workbasedir = dget(workpath.dentry);
 
-	if (ovl_inuse_trylock(ofs->workbasedir)) {
+	if (ovl_inuse_trylock(ofs->workbasedir)) {				// 检查workdir的inode是否有“I_OVL_INUSE”标记，如果没有则打上“I_OVL_INUSE”标记，如果有则说明workdir被其他overlay文件系统当做upper层或wordir使用，再次重用会给出警告
 		ofs->workdir_locked = true;
 	} else {
 		err = ovl_report_in_use(ofs, "workdir");
@@ -1184,7 +1184,7 @@ static int ovl_get_workdir(struct super_block *sb, struct ovl_fs *ofs,
 	}
 
 	err = ovl_setup_trap(sb, ofs->workbasedir, &ofs->workbasedir_trap,
-			     "workdir");
+			     "workdir");					// 检查哈希表是否已有置上“trap”标记的ofs->workbasedir对应inode，如果没有则打上“trap”标记并放入哈希表
 	if (err)
 		goto out;
 
@@ -1309,7 +1309,7 @@ static int ovl_get_fsid(struct ovl_fs *ofs, const struct path *path)
 }
 
 static int ovl_get_lower_layers(struct super_block *sb, struct ovl_fs *ofs,
-				struct path *stack, unsigned int numlower)
+				struct path *stack, unsigned int numlower)	// 将overlay的所有lower层信息填充到ovl private超级块ofs->lower_layers和ofs->lower_fs
 {
 	int err;
 	unsigned int i;
@@ -1334,17 +1334,17 @@ static int ovl_get_lower_layers(struct super_block *sb, struct ovl_fs *ofs,
 		if (err < 0)
 			goto out;
 
-		err = ovl_setup_trap(sb, stack[i].dentry, &trap, "lowerdir");
+		err = ovl_setup_trap(sb, stack[i].dentry, &trap, "lowerdir");	// 检查哈希表是否已有置上“trap”标记的stack[i].dentry对应inode，如果没有则打上“trap”标记并放入哈希表
 		if (err)
 			goto out;
 
-		if (ovl_is_inuse(stack[i].dentry)) {
+		if (ovl_is_inuse(stack[i].dentry)) {				// 检查lower层root inode是否有“I_OVL_INUSE”标记，如果有则说明lower层的目录被其他overlay文件系统当做upper层或wordir使用，再次重用会给出警告
 			err = ovl_report_in_use(ofs, "lowerdir");
 			if (err)
 				goto out;
 		}
 
-		mnt = clone_private_mount(&stack[i]);
+		mnt = clone_private_mount(&stack[i]);				// 克隆第i个lower层装载实例
 		err = PTR_ERR(mnt);
 		if (IS_ERR(mnt)) {
 			pr_err("overlayfs: failed to clone lowerpath\n");
@@ -1356,10 +1356,10 @@ static int ovl_get_lower_layers(struct super_block *sb, struct ovl_fs *ofs,
 		 * Make lower layers R/O.  That way fchmod/fchown on lower file
 		 * will fail instead of modifying lower fs.
 		 */
-		mnt->mnt_flags |= MNT_READONLY | MNT_NOATIME;
+		mnt->mnt_flags |= MNT_READONLY | MNT_NOATIME;			// lower层文件系统是只读
 
-		ofs->lower_layers[ofs->numlower].trap = trap;
-		ofs->lower_layers[ofs->numlower].mnt = mnt;
+		ofs->lower_layers[ofs->numlower].trap = trap;			// 记录lower层的trap inode
+		ofs->lower_layers[ofs->numlower].mnt = mnt;			// ovl private超级块在lower层的装载实例是clone的
 		ofs->lower_layers[ofs->numlower].idx = i + 1;
 		ofs->lower_layers[ofs->numlower].fsid = fsid;
 		if (fsid) {
@@ -1438,8 +1438,8 @@ static struct ovl_entry *ovl_get_lowerstack(struct super_block *sb,
 	err = -EINVAL;
 	lower = lowertmp;
 	for (numlower = 0; numlower < stacklen; numlower++) {
-		err = ovl_lower_dir(lower, &stack[numlower], ofs,		// stack[numlower]是指定第numlower个lower层的路径
-				    &sb->s_stack_depth, &remote);
+		err = ovl_lower_dir(lower, &stack[numlower], ofs,
+				    &sb->s_stack_depth, &remote);		// stack[numlower]是指定第numlower个lower层的路径(path)，调用具体文件系统接口查找名字lower对应的path
 		if (err)
 			goto out_err;
 
@@ -1453,7 +1453,7 @@ static struct ovl_entry *ovl_get_lowerstack(struct super_block *sb,
 		goto out_err;
 	}
 
-	err = ovl_get_lower_layers(sb, ofs, stack, numlower);
+	err = ovl_get_lower_layers(sb, ofs, stack, numlower);			// 将每个lower层的信息放置于ovl private超级块ofs->lower_layers
 	if (err)
 		goto out_err;
 
@@ -1502,11 +1502,11 @@ static int ovl_check_layer(struct super_block *sb, struct ovl_fs *ofs,
 	parent = dget_parent(next);
 
 	/* Walk back ancestors to root (inclusive) looking for traps */
-	while (!err && parent != next) {
-		if (ovl_lookup_trap_inode(sb, parent)) {
+	while (!err && parent != next) {					// 递归遍历parent
+		if (ovl_lookup_trap_inode(sb, parent)) {			// parent inode是否在哈希表中存在对应置上“trap”标记的inode，如果有则发生重叠
 			err = -ELOOP;
 			pr_err("overlayfs: overlapping %s path\n", name);
-		} else if (ovl_is_inuse(parent)) {
+		} else if (ovl_is_inuse(parent)) {				// parent不能是别的overlay文件系统正在使用的upper层或workdir，如果是则警告
 			err = ovl_report_in_use(ofs, name);
 		}
 		next = parent;
@@ -1529,7 +1529,7 @@ static int ovl_check_overlapping_layers(struct super_block *sb,
 
 	if (ofs->upper_mnt) {
 		err = ovl_check_layer(sb, ofs, ofs->upper_mnt->mnt_root,
-				      "upperdir");
+				      "upperdir");				// 对于upper层，检查哈希表是否已有置上“trap”标记的ofs->upper_mnt->mnt_root对应inode；检查ofs->upper_mnt->mnt_root是否有“I_OVL_INUSE”标记
 		if (err)
 			return err;
 
@@ -1540,7 +1540,7 @@ static int ovl_check_overlapping_layers(struct super_block *sb,
 		 * workbasedir.  In that case, we already have their traps in
 		 * inode cache and we will catch that case on lookup.
 		 */
-		err = ovl_check_layer(sb, ofs, ofs->workbasedir, "workdir");
+		err = ovl_check_layer(sb, ofs, ofs->workbasedir, "workdir");	// 对于workdir，检查哈希表是否已有置上“trap”标记的ofs->workbasedir对应inode；检查ofs->workbasedir是否有“I_OVL_INUSE”标记
 		if (err)
 			return err;
 	}
@@ -1548,7 +1548,7 @@ static int ovl_check_overlapping_layers(struct super_block *sb,
 	for (i = 0; i < ofs->numlower; i++) {
 		err = ovl_check_layer(sb, ofs,
 				      ofs->lower_layers[i].mnt->mnt_root,
-				      "lowerdir");
+				      "lowerdir");				// 对于lower层，检查哈希表是否已有置上“trap”标记的ofs->lower_layers[i].mnt->mnt_root对应inode；检查ofs->lower_layers[i].mnt->mnt_root是否有“I_OVL_INUSE”标记
 		if (err)
 			return err;
 	}
@@ -1561,7 +1561,7 @@ static int ovl_fill_super(struct super_block *sb, void *data, int silent)
 	struct path upperpath = { };
 	struct dentry *root_dentry;
 	struct ovl_entry *oe;
-	struct ovl_fs *ofs;
+	struct ovl_fs *ofs;							// overlay文件系统private超级块
 	struct cred *cred;
 	int err;
 
@@ -1596,7 +1596,7 @@ static int ovl_fill_super(struct super_block *sb, void *data, int silent)
 		ofs->xino_bits = BITS_PER_LONG - 32;
 
 	/* alloc/destroy_inode needed for setting up traps in inode cache */
-	sb->s_op = &ovl_super_operations;
+	sb->s_op = &ovl_super_operations;					// 层间重叠检测需要新建inode，用到s_op
 
 	if (ofs->config.upperdir) {						// 如果这个overlay文件系统实例配置了upper层
 		if (!ofs->config.workdir) {					// 配置了upper层的overlay文件系统必须有workdir
@@ -1604,11 +1604,11 @@ static int ovl_fill_super(struct super_block *sb, void *data, int silent)
 			goto out_err;
 		}
 
-		err = ovl_get_upper(sb, ofs, &upperpath);			// upperpath是指定upper层的路径，upper层的vfsmount实例被clone并赋值给ofs->upper_mnt
+		err = ovl_get_upper(sb, ofs, &upperpath);			// upperpath是指定upper层的路径，upper层的vfsmount实例被clone并赋值给ofs->upper_mnt。获取upper层，检查是否已经有打上“trap”标记的inode，同时为upper层的root inode打上“trap”标记
 		if (err)
 			goto out_err;
 
-		err = ovl_get_workdir(sb, ofs, &upperpath);			// 在overlay装载选项指定的$WORKDIR下创建实际工作目录work
+		err = ovl_get_workdir(sb, ofs, &upperpath);			// 在overlay装载选项指定的$WORKDIR下创建实际工作目录work。获取workdir，检查是否已经有打上“trap”标记的inode，同时为workdir的root inode打上“trap”标记
 		if (err)
 			goto out_err;
 
@@ -1619,7 +1619,7 @@ static int ovl_fill_super(struct super_block *sb, void *data, int silent)
 		sb->s_time_gran = ofs->upper_mnt->mnt_sb->s_time_gran;		// overlay文件系统的a/c/mtime时间粒度和upper层一致
 
 	}
-	oe = ovl_get_lowerstack(sb, ofs);					// 填充ofs->lower_layers，记录lower层信息
+	oe = ovl_get_lowerstack(sb, ofs);					// 填充ofs->lower_layers，记录lower层信息。逐个获取lower层，检查是否已经有打上“trap”标记的inode，同时为每个lower层的root inode打上“trap”标记
 	err = PTR_ERR(oe);
 	if (IS_ERR(oe))
 		goto out_err;
@@ -1642,7 +1642,7 @@ static int ovl_fill_super(struct super_block *sb, void *data, int silent)
 
 	}
 
-	err = ovl_check_overlapping_layers(sb, ofs);
+	err = ovl_check_overlapping_layers(sb, ofs);				// 对每个层对应root inode的parent递归检查是否已经打上“trap”标记，重叠层可能是互为祖先关系
 	if (err)
 		goto out_free_oe;
 
@@ -1676,7 +1676,7 @@ static int ovl_fill_super(struct super_block *sb, void *data, int silent)
 	if (!root_dentry)
 		goto out_free_oe;
 
-	root_dentry->d_fsdata = oe;						// 将根目录的dentry->d_fsdata指向overlay_dentry
+	root_dentry->d_fsdata = oe;						// 将根目录的具体文件系统相关dentry(dentry->d_fsdata)指向overlay_dentry
 
 	mntput(upperpath.mnt);
 	if (upperpath.dentry) {

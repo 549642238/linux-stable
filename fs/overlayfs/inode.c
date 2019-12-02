@@ -781,12 +781,12 @@ bool ovl_lookup_trap_inode(struct super_block *sb, struct dentry *dir)
 	struct inode *trap;
 	bool res;
 
-	trap = ilookup5(sb, (unsigned long) key, ovl_inode_test, key);
+	trap = ilookup5(sb, (unsigned long) key, ovl_inode_test, key);		// 基于key和sb返回哈希表中对应的inode
 	if (!trap)
 		return false;
 
 	res = IS_DEADDIR(trap) && !ovl_inode_upper(trap) &&
-				  !ovl_inode_lower(trap);
+				  !ovl_inode_lower(trap);			// 这时候的“trap”标记是置上S_DEAD标志位而且inode即不在upper层又不在lower层。我们在一个已经装载成功的overlay文件系统下创建inode肯定会填充ovl_inode的__upperdentry或lower项，因为它不在lower层就在upper层，对于之前ovl_fill_super标记“trap”的inode这两个项都是空的，加上S_DEAD标志位足以区分哈希表中的inode是否是“trap”。如果只有S_DEAD标志位是无法区分“trap” inode的，因为rmdir会将inode置上S_DEAD，而且这个ovl_inode很可能对应的i_private就是lower层的root inode，其i_sb肯定是ovl_sb，在哈希表中可以找到，可能被当做“trap” inode，但实际上它并不是
 
 	iput(trap);
 	return res;
@@ -797,7 +797,7 @@ bool ovl_lookup_trap_inode(struct super_block *sb, struct dentry *dir)
  * fail ovl_verify_inode(), so any lookup that will find some layer root
  * will fail.
  */
-struct inode *ovl_get_trap_inode(struct super_block *sb, struct dentry *dir)
+struct inode *ovl_get_trap_inode(struct super_block *sb, struct dentry *dir)	// 检查/生成trap inode
 {
 	struct inode *key = d_inode(dir);
 	struct inode *trap;
@@ -806,19 +806,19 @@ struct inode *ovl_get_trap_inode(struct super_block *sb, struct dentry *dir)
 		return ERR_PTR(-ENOTDIR);
 
 	trap = iget5_locked(sb, (unsigned long) key, ovl_inode_test,
-			    ovl_inode_set, key);
+			    ovl_inode_set, key);				// 基于key和sb从哈希表得到inode，没有则新建inode并插入哈希表，如果是新创建的inode会有I_NEW标志位
 	if (!trap)
 		return ERR_PTR(-ENOMEM);
 
-	if (!(trap->i_state & I_NEW)) {
+	if (!(trap->i_state & I_NEW)) {						// inode原本就存在于哈希表，发生overlay层间发生重叠，肯定是之前层的root inode已经加入哈希表。这时候的“trap”标记仅仅是inode的i_private是key而且inode的i_sb是sb，因为在ovl_fill_super结束之前不会生成该文件系统的inode（该文件系统还没挂载完成，不存在任何除root_dentry之外的ovl_inode）只有在mount完成之后才可以在该装载实例对应的文件系统下新建inode并使inode->i_sb = sb
 		/* Conflicting layer roots? */
 		iput(trap);
 		return ERR_PTR(-ELOOP);
 	}
 
 	trap->i_mode = S_IFDIR;
-	trap->i_flags = S_DEAD;
-	unlock_new_inode(trap);
+	trap->i_flags = S_DEAD;							// 打上新的“trap”标志位
+	unlock_new_inode(trap);							// 清除trap inode的I_NEW标志位
 
 	return trap;
 }

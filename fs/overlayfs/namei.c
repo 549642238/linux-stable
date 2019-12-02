@@ -242,7 +242,7 @@ static int ovl_lookup_single(struct dentry *base, struct ovl_lookup_data *d,
 		if (!d->metacopy || d->last)
 			goto out;
 	} else {
-		if (ovl_lookup_trap_inode(d->sb, this)) {
+		if (ovl_lookup_trap_inode(d->sb, this)) {			// 对每个lookup过程中遍历的inode做重叠检查，因为很可能在mount成功之后用户将upper层root dentry移动到lower层下面
 			/* Caught in a trap of overlapping layers */
 			err = -ELOOP;
 			goto out_err;
