@@ -541,8 +541,8 @@ int propagate_umount(struct list_head *list)
 	LIST_HEAD(visited);
 
 	/* Find candidates for unmounting */
-	list_for_each_entry_reverse(mnt, list, mnt_list) {
-		struct mount *parent = mnt->mnt_parent;
+	list_for_each_entry_reverse(mnt, list, mnt_list) {			// 对于list中每个装载实例mnt
+		struct mount *parent = mnt->mnt_parent;				// 针对mnt的parent做umount传播
 		struct mount *m;
 
 		/*
@@ -556,7 +556,7 @@ int propagate_umount(struct list_head *list)
 
 		list_add_tail(&mnt->mnt_umounting, &visited);
 		for (m = propagation_next(parent, parent); m;
-		     m = propagation_next(m, parent)) {
+		     m = propagation_next(m, parent)) {				// 对于parent的所有peer group和slave group装载实例
 			struct mount *child = __lookup_mnt(&m->mnt,
 							   mnt->mnt_mountpoint);
 			if (!child)
@@ -597,7 +597,7 @@ int propagate_umount(struct list_head *list)
 	umount_list(&to_umount, &to_restore);
 	restore_mounts(&to_restore);
 	cleanup_umount_visitations(&visited);
-	list_splice_tail(&to_umount, list);
+	list_splice_tail(&to_umount, list);					// 要被卸载的装载实例都会被放入list
 
 	return 0;
 }

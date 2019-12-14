@@ -1424,7 +1424,7 @@ static bool disconnect_mount(struct mount *mnt, enum umount_tree_flags how)
  * mount_lock must be held
  * namespace_sem must be held for write
  */
-static void umount_tree(struct mount *mnt, enum umount_tree_flags how)
+static void umount_tree(struct mount *mnt, enum umount_tree_flags how)			// 从文件系统树移除mnt实例，umount操作会在mnt及其递归child实例的peer group和slave group传播
 {
 	LIST_HEAD(tmp_list);
 	struct mount *p;
@@ -1433,48 +1433,48 @@ static void umount_tree(struct mount *mnt, enum umount_tree_flags how)
 		propagate_mount_unlock(mnt);
 
 	/* Gather the mounts to umount */
-	for (p = mnt; p; p = next_mnt(p, mnt)) {
+	for (p = mnt; p; p = next_mnt(p, mnt)) {				// 搜集所有要被卸载的装载实例，包括mnt及其递归的child mount实例
 		p->mnt.mnt_flags |= MNT_UMOUNT;
-		list_move(&p->mnt_list, &tmp_list);
+		list_move(&p->mnt_list, &tmp_list);				// 搜集齐的要被卸载mount实例放在tmp_list链表
 	}
 
 	/* Hide the mounts from mnt_mounts */
-	list_for_each_entry(p, &tmp_list, mnt_list) {
+	list_for_each_entry(p, &tmp_list, mnt_list) {				// 这些要被卸载的装载实例不再是任何人的child
 		list_del_init(&p->mnt_child);
 	}
 
 	/* Add propogated mounts to the tmp_list */
 	if (how & UMOUNT_PROPAGATE)
-		propagate_umount(&tmp_list);
+		propagate_umount(&tmp_list);					// 传播umount操作到tmp_list每个装载实例parent的slave group和peer group
 
 	while (!list_empty(&tmp_list)) {
 		struct mnt_namespace *ns;
 		bool disconnect;
 		p = list_first_entry(&tmp_list, struct mount, mnt_list);
 		list_del_init(&p->mnt_expire);
-		list_del_init(&p->mnt_list);
+		list_del_init(&p->mnt_list);					// 从命名空间链表中移除要被卸载的装载实例
 		ns = p->mnt_ns;
 		if (ns) {
-			ns->mounts--;
+			ns->mounts--;						// 对应命名空间的装载实例数量-1
 			__touch_mnt_namespace(ns);
 		}
-		p->mnt_ns = NULL;
+		p->mnt_ns = NULL;						// 要被卸载的装载实例不再属于任何命名空间
 		if (how & UMOUNT_SYNC)
 			p->mnt.mnt_flags |= MNT_SYNC_UMOUNT;
 
-		disconnect = disconnect_mount(p, how);
-		if (mnt_has_parent(p)) {
-			mnt_add_count(p->mnt_parent, -1);
+		disconnect = disconnect_mount(p, how);				// 卸载操作是同步还是异步执行
+		if (mnt_has_parent(p)) {					// 装载实例如果有parent
+			mnt_add_count(p->mnt_parent, -1);			// parent引用计数-1
 			if (!disconnect) {
 				/* Don't forget about p */
-				list_add_tail(&p->mnt_child, &p->mnt_parent->mnt_mounts);
-			} else {
-				umount_mnt(p);
+				list_add_tail(&p->mnt_child, &p->mnt_parent->mnt_mounts);	// 恢复parent的child链表
+			} else {						// 同步执行卸载操作
+				umount_mnt(p);					// 从全局哈希表删除装载实例，释放p->mnt_mp
 			}
 		}
-		change_mnt_propagation(p, MS_PRIVATE);
+		change_mnt_propagation(p, MS_PRIVATE);				// 对于要被卸载的装载实例应当被隔离出来，不要再受mount/umount操作影响其child链表
 		if (disconnect)
-			hlist_add_head(&p->mnt_umount, &unmounted);
+			hlist_add_head(&p->mnt_umount, &unmounted);		// 异步执行卸载操作
 	}
 }
 
@@ -1503,7 +1503,7 @@ static int do_umount_root(struct super_block *sb)
 	return ret;
 }
 
-static int do_umount(struct mount *mnt, int flags)
+static int do_umount(struct mount *mnt, int flags)				// umount系统调用实现
 {
 	struct super_block *sb = mnt->mnt.mnt_sb;
 	int retval;
@@ -1561,14 +1561,14 @@ static int do_umount(struct mount *mnt, int flags)
 	 * /reboot - static binary that would close all descriptors and
 	 * call reboot(9). Then init(8) could umount root and exec /reboot.
 	 */
-	if (&mnt->mnt == current->fs->root.mnt && !(flags & MNT_DETACH)) {
+	if (&mnt->mnt == current->fs->root.mnt && !(flags & MNT_DETACH)) {	// 非lazy模式
 		/*
 		 * Special case for "unmounting" root ...
 		 * we just try to remount it readonly.
 		 */
 		if (!ns_capable(sb->s_user_ns, CAP_SYS_ADMIN))
 			return -EPERM;
-		return do_umount_root(sb);
+		return do_umount_root(sb);					// 调用具体文件系统接口put_fs_context -> deactivate_super -> deactivate_locked_super -> fs->kill_sb（如果超级块引用计数为0）释放超级块
 	}
 
 	namespace_lock();
@@ -1580,16 +1580,16 @@ static int do_umount(struct mount *mnt, int flags)
 		goto out;
 
 	event++;
-	if (flags & MNT_DETACH) {
+	if (flags & MNT_DETACH) {						// umount -l走这里，lazy模式，可以递归卸载mnt下的child装载实例
 		if (!list_empty(&mnt->mnt_list))
-			umount_tree(mnt, UMOUNT_PROPAGATE);
+			umount_tree(mnt, UMOUNT_PROPAGATE);			// 从文件系统树移除mnt实例，umount操作会在peer group和slave group传播
 		retval = 0;
 	} else {
 		shrink_submounts(mnt);
 		retval = -EBUSY;
-		if (!propagate_mount_busy(mnt, 2)) {
+		if (!propagate_mount_busy(mnt, 2)) {				// 装载实例有child会返回EBUSY
 			if (!list_empty(&mnt->mnt_list))
-				umount_tree(mnt, UMOUNT_PROPAGATE|UMOUNT_SYNC);
+				umount_tree(mnt, UMOUNT_PROPAGATE|UMOUNT_SYNC);	// 从文件系统树移除mnt实例，umount操作会在peer group和slave group传播
 			retval = 0;
 		}
 	}
@@ -1664,7 +1664,7 @@ static inline bool may_mandlock(void)
  * unixes. Our API is identical to OSF/1 to avoid making a mess of AMD
  */
 
-int ksys_umount(char __user *name, int flags)
+int ksys_umount(char __user *name, int flags)					// umount系统调用
 {
 	struct path path;
 	struct mount *mnt;
@@ -1680,12 +1680,12 @@ int ksys_umount(char __user *name, int flags)
 	if (!(flags & UMOUNT_NOFOLLOW))
 		lookup_flags |= LOOKUP_FOLLOW;
 
-	retval = user_path_mountpoint_at(AT_FDCWD, name, lookup_flags, &path);
+	retval = user_path_mountpoint_at(AT_FDCWD, name, lookup_flags, &path);	// 找到对应路径的path，它是要被umount的装载点
 	if (retval)
 		goto out;
 	mnt = real_mount(path.mnt);
 	retval = -EINVAL;
-	if (path.dentry != path.mnt->mnt_root)
+	if (path.dentry != path.mnt->mnt_root)					// 对应的path并不是一个装载点
 		goto dput_and_out;
 	if (!check_mnt(mnt))
 		goto dput_and_out;
@@ -1695,7 +1695,7 @@ int ksys_umount(char __user *name, int flags)
 	if (flags & MNT_FORCE && !capable(CAP_SYS_ADMIN))
 		goto dput_and_out;
 
-	retval = do_umount(mnt, flags);
+	retval = do_umount(mnt, flags);						// 具体卸载操作
 dput_and_out:
 	/* we mustn't call path_put() as that would clear mnt_expiry_mark */
 	dput(path.dentry);
@@ -1704,7 +1704,7 @@ out:
 	return retval;
 }
 
-SYSCALL_DEFINE2(umount, char __user *, name, int, flags)
+SYSCALL_DEFINE2(umount, char __user *, name, int, flags)			// umount系统调用接口
 {
 	return ksys_umount(name, flags);
 }

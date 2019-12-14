@@ -43,7 +43,7 @@ struct mount {
 #ifdef CONFIG_SMP
 	struct mnt_pcp __percpu *mnt_pcp;
 #else
-	int mnt_count;								// 引用计数
+	int mnt_count;								// 引用计数，装载实例下新添child时会+1
 	int mnt_writers;
 #endif
 	struct list_head mnt_mounts;	/* list of children, anchored here */	// 指向装载到本挂载实例对应文件系统下的子文件系统挂载实例链表
@@ -60,9 +60,9 @@ struct mount {
 	struct mountpoint *mnt_mp;	/* where is it mounted */		// 挂载点节点
 	union {
 		struct hlist_node mnt_mp_list;	/* list mounts with the same mountpoint */
-		struct hlist_node mnt_umount;
+		struct hlist_node mnt_umount;					// 异步卸载装载实例放入的链表
 	};
-	struct list_head mnt_umounting; /* list entry for umount propagation */
+	struct list_head mnt_umounting; /* list entry for umount propagation */	// umount传播时用到
 #ifdef CONFIG_FSNOTIFY
 	struct fsnotify_mark_connector __rcu *mnt_fsnotify_marks;
 	__u32 mnt_fsnotify_mask;
