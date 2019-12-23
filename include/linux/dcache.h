@@ -90,31 +90,31 @@ struct dentry {
 	/* RCU lookup touched fields */
 	unsigned int d_flags;		/* protected by d_lock */
 	seqcount_t d_seq;		/* per dentry seqlock */
-	struct hlist_bl_node d_hash;	/* lookup hash list */
-	struct dentry *d_parent;	/* parent directory */
+	struct hlist_bl_node d_hash;	/* lookup hash list */			// 除了根dentry，所有dentry链入到全局dentry_hashtable
+	struct dentry *d_parent;	/* parent directory */			// 指向父目录的dentry，如果已经是根dentry则指向自己
 	struct qstr d_name;
 	struct inode *d_inode;		/* Where the name belongs to - NULL is
-					 * negative */
-	unsigned char d_iname[DNAME_INLINE_LEN];	/* small names */
+					 * negative */				// 这个dentry对应的inode
+	unsigned char d_iname[DNAME_INLINE_LEN];	/* small names */	// 保存短文件名
 
 	/* Ref lookup also touches following */
-	struct lockref d_lockref;	/* per-dentry lock and refcount */
-	const struct dentry_operations *d_op;
-	struct super_block *d_sb;	/* The root of the dentry tree */
-	unsigned long d_time;		/* used by d_revalidate */
-	void *d_fsdata;			/* fs-specific data */
+	struct lockref d_lockref;	/* per-dentry lock and refcount */	// 引用计数
+	const struct dentry_operations *d_op;					// 指向dentry操作表
+	struct super_block *d_sb;	/* The root of the dentry tree */	// 指向所属文件系统超级块
+	unsigned long d_time;		/* used by d_revalidate */		// 被函数d_revalidate判断该dentry是否有效的依据
+	void *d_fsdata;			/* fs-specific data */			// 指向具体文件系统dentry
 
 	union {
-		struct list_head d_lru;		/* LRU list */
+		struct list_head d_lru;		/* LRU list */			// 未使用的dentry被链入lru链表，对应super_block.s_dentry_lru
 		wait_queue_head_t *d_wait;	/* in-lookup ones only */
 	};
-	struct list_head d_child;	/* child of parent list */
-	struct list_head d_subdirs;	/* our children */
+	struct list_head d_child;	/* child of parent list */		// 链入父dentry.d_subdirs
+	struct list_head d_subdirs;	/* our children */			// 这个dentry包含的子dentry链表
 	/*
 	 * d_alias and d_rcu can share memory
 	 */
 	union {
-		struct hlist_node d_alias;	/* inode alias list */
+		struct hlist_node d_alias;	/* inode alias list */		// 链入所属inode的i_dentry链表，多个dentry可以指向同一个inode（硬链接）
 		struct hlist_bl_node d_in_lookup_hash;	/* only for in-lookup ones */
 	 	struct rcu_head d_rcu;
 	} d_u;
