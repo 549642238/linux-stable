@@ -68,7 +68,7 @@ struct mount {
 	__u32 mnt_fsnotify_mask;
 #endif
 	int mnt_id;			/* mount identifier */			// mount id
-	int mnt_group_id;		/* peer group identifier */
+	int mnt_group_id;		/* peer group identifier */		// 同一peer group的装载实例其mnt_group_id相同
 	int mnt_expiry_mark;		/* true if marked for expiry */
 	struct hlist_head mnt_pins;
 	struct hlist_head mnt_stuck_children;

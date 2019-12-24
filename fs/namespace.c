@@ -860,14 +860,14 @@ void mnt_change_mountpoint(struct mount *parent, struct mountpoint *mp, struct m
 	struct mountpoint *old_mp = mnt->mnt_mp;
 	struct mount *old_parent = mnt->mnt_parent;
 
-	list_del_init(&mnt->mnt_child);
-	hlist_del_init(&mnt->mnt_mp_list);
-	hlist_del_init_rcu(&mnt->mnt_hash);
+	list_del_init(&mnt->mnt_child);						// 装载实例mnt不再是任何人的child
+	hlist_del_init(&mnt->mnt_mp_list);					// 从挂载点节点链表删除装载实例
+	hlist_del_init_rcu(&mnt->mnt_hash);					// 暂时先从哈希表移除，因为改变挂载点节点会改变哈希值
 
-	attach_mnt(mnt, parent, mp);
+	attach_mnt(mnt, parent, mp);						// 修改mnt的parent、挂载点节点和哈希值
 
-	put_mountpoint(old_mp);
-	mnt_add_count(old_parent, -1);
+	put_mountpoint(old_mp);							// 释放旧的挂载点节点
+	mnt_add_count(old_parent, -1);						// 原mnt的parent少了一个引用计数
 }
 
 /*
@@ -2053,7 +2053,7 @@ static int attach_recursive_mnt(struct mount *source_mnt,
 	/* Preallocate a mountpoint in case the new mounts need
 	 * to be tucked under other mounts.
 	 */
-	smp = get_mountpoint(source_mnt->mnt.mnt_root);				// 获取挂载点节点，对应挂载点节点引用计数+1
+	smp = get_mountpoint(source_mnt->mnt.mnt_root);				// 获取挂载点节点，对于tuck mount用到
 	if (IS_ERR(smp))
 		return PTR_ERR(smp);
 
@@ -2090,13 +2090,13 @@ static int attach_recursive_mnt(struct mount *source_mnt,
 		commit_tree(source_mnt);					// 提交文件系统树，更新mount namespace的mount数量
 	}
 
-	hlist_for_each_entry_safe(child, n, &tree_list, mnt_hash) {
+	hlist_for_each_entry_safe(child, n, &tree_list, mnt_hash) {		// 对于所有因为传播而克隆的装载实例
 		struct mount *q;
 		hlist_del_init(&child->mnt_hash);
 		q = __lookup_mnt(&child->mnt_parent->mnt,
-				 child->mnt_mountpoint);
+				 child->mnt_mountpoint);			// 如果可以找到已经存在于全局哈希表、具有相同parent并且挂载点节点dentry相同的装载实例，mount --bind加命名空间可以得到这种情况
 		if (q)
-			mnt_change_mountpoint(child, smp, q);
+			mnt_change_mountpoint(child, smp, q);			// 改变已经存在的装载实例的挂载点节点和parent
 		/* Notice when we are propagating across user namespaces */
 		if (child->mnt_parent->mnt_ns->user_ns != user_ns)
 			lock_mnt_tree(child);

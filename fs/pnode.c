@@ -380,7 +380,7 @@ int propagate_mount_busy(struct mount *mnt, int refcnt)
 	 * If not, we don't have to go checking for all other
 	 * mounts
 	 */
-	if (!list_empty(&mnt->mnt_mounts) || do_refcount_check(mnt, refcnt))
+	if (!list_empty(&mnt->mnt_mounts) || do_refcount_check(mnt, refcnt))	// 如果mnt实例下还有child装载实例，不能卸载
 		return 1;
 
 	for (m = propagation_next(parent, parent); m;
@@ -393,7 +393,7 @@ int propagate_mount_busy(struct mount *mnt, int refcnt)
 		/* Is there exactly one mount on the child that covers
 		 * it completely whose reference should be ignored?
 		 */
-		topper = find_topper(child);
+		topper = find_topper(child);					// 对于tuck mount情况，它多了将tuck mount实例作为child的引用计数
 		if (topper)
 			count += 1;
 		else if (!list_empty(&child->mnt_mounts))
@@ -513,7 +513,7 @@ static void restore_mounts(struct list_head *to_restore)
 			parent = parent->mnt_parent;
 		}
 		if (parent != mnt->mnt_parent)
-			mnt_change_mountpoint(parent, mp, mnt);
+			mnt_change_mountpoint(parent, mp, mnt);			// tuck mount情况在umount后要将原来的装载实例恢复parent和挂载点节点
 	}
 }
 
