@@ -353,9 +353,9 @@ static void remove_buds(struct ubifs_info *c)
  * returns zero in case of success and a negative error code in case of
  * failure.
  */
-int ubifs_log_start_commit(struct ubifs_info *c, int *ltail_lnum)
+int ubifs_log_start_commit(struct ubifs_info *c, int *ltail_lnum)		// 提交内容到日志，操作内容以node组织
 {
-	void *buf;
+	void *buf;								// 要提交到日志区的所有node都记录在buf中
 	struct ubifs_cs_node *cs;
 	struct ubifs_ref_node *ref;
 	int err, i, max_len, len;
@@ -364,15 +364,15 @@ int ubifs_log_start_commit(struct ubifs_info *c, int *ltail_lnum)
 	if (err)
 		return err;
 
-	max_len = UBIFS_CS_NODE_SZ + c->jhead_cnt * UBIFS_REF_NODE_SZ;
+	max_len = UBIFS_CS_NODE_SZ + c->jhead_cnt * UBIFS_REF_NODE_SZ;		// 提交到日志区的数据长度，以commit start node开始
 	max_len = ALIGN(max_len, c->min_io_size);
 	buf = cs = kmalloc(max_len, GFP_NOFS);
 	if (!buf)
 		return -ENOMEM;
 
 	cs->ch.node_type = UBIFS_CS_NODE;
-	cs->cmt_no = cpu_to_le64(c->cmt_no);
-	ubifs_prepare_node(c, cs, UBIFS_CS_NODE_SZ, 0);
+	cs->cmt_no = cpu_to_le64(c->cmt_no);					// 每个写到日志区的cs node都有一个commit号
+	ubifs_prepare_node(c, cs, UBIFS_CS_NODE_SZ, 0);				// 填充cs->ch的其他项
 
 	err = ubifs_shash_init(c, c->log_hash);
 	if (err)
@@ -389,23 +389,23 @@ int ubifs_log_start_commit(struct ubifs_info *c, int *ltail_lnum)
 	 * phase.
 	 */
 
-	len = UBIFS_CS_NODE_SZ;
-	for (i = 0; i < c->jhead_cnt; i++) {
-		int lnum = c->jheads[i].wbuf.lnum;
-		int offs = c->jheads[i].wbuf.offs;
+	len = UBIFS_CS_NODE_SZ;							// 实际要写入日志区的内容长度
+	for (i = 0; i < c->jhead_cnt; i++) {					// 对于每个journal head
+		int lnum = c->jheads[i].wbuf.lnum;				// 操作内容在哪个LEB记录
+		int offs = c->jheads[i].wbuf.offs;				// 操作内容在LEB的哪个位置开始记录，所以为什么要在commit开始前把write buffer写入到Flash
 
-		if (lnum == -1 || offs == c->leb_size)
+		if (lnum == -1 || offs == c->leb_size)				// 过滤无效的提交
 			continue;
 
 		dbg_log("add ref to LEB %d:%d for jhead %s",
 			lnum, offs, dbg_jhead(i));
-		ref = buf + len;
+		ref = buf + len;						// reference node
 		ref->ch.node_type = UBIFS_REF_NODE;
 		ref->lnum = cpu_to_le32(lnum);
 		ref->offs = cpu_to_le32(offs);
 		ref->jhead = cpu_to_le32(i);
 
-		ubifs_prepare_node(c, ref, UBIFS_REF_NODE_SZ, 0);
+		ubifs_prepare_node(c, ref, UBIFS_REF_NODE_SZ, 0);		// 填充ref->ch的其他项
 		len += UBIFS_REF_NODE_SZ;
 
 		err = ubifs_shash_update(c, c->log_hash, ref,
@@ -415,7 +415,7 @@ int ubifs_log_start_commit(struct ubifs_info *c, int *ltail_lnum)
 		ubifs_shash_copy_state(c, c->log_hash, c->jheads[i].log_hash);
 	}
 
-	ubifs_pad(c, buf + len, ALIGN(len, c->min_io_size) - len);
+	ubifs_pad(c, buf + len, ALIGN(len, c->min_io_size) - len);		// 按min_io_size对齐后日志内容缺少的字节需要填充pad
 
 	/* Switch to the next log LEB */
 	if (c->lhead_offs) {							// 将日志节点写入新的log LEB，如果当前log LEB已经有内容
@@ -425,7 +425,7 @@ int ubifs_log_start_commit(struct ubifs_info *c, int *ltail_lnum)
 	}
 
 	/* Must ensure next LEB has been unmapped */
-	err = ubifs_leb_unmap(c, c->lhead_lnum);				// unmap c->lhead_lnum号LEB，之后会后台擦除，可以理解为擦除操作
+	err = ubifs_leb_unmap(c, c->lhead_lnum);				// unmap c->lhead_lnum号LEB，之后会后台擦除，可以理解为LEB对应的PEB擦除操作，再次使用LEB时重新映射新的empty PEB
 	if (err)
 		goto out;
 
@@ -438,7 +438,7 @@ int ubifs_log_start_commit(struct ubifs_info *c, int *ltail_lnum)
 	*ltail_lnum = c->lhead_lnum;						// commit_end执行后，c->ltail_lnum=ltail_lnum，表示可以清空所有log LEB的内容
 
 	c->lhead_offs += len;							// 更新c->lhead_offs
-	ubifs_assert(c, c->lhead_offs < c->leb_size);
+	ubifs_assert(c, c->lhead_offs < c->leb_size);				// 每次日志提交内容不会超过一个LEB size，c->jhead_cnt的大小保证了这一点
 
 	remove_buds(c);
 
@@ -477,7 +477,7 @@ int ubifs_log_end_commit(struct ubifs_info *c, int ltail_lnum)
 	dbg_log("old tail was LEB %d:0, new tail is LEB %d:0",
 		c->ltail_lnum, ltail_lnum);
 
-	c->ltail_lnum = ltail_lnum;						// 日志写入完成，log LEB记录内容无效
+	c->ltail_lnum = ltail_lnum;						// 日志写入完成，本次commit使用的log LEB记录内容无效
 	/*
 	 * The commit is finished and from now on it must be guaranteed that
 	 * there is always enough space for the next commit.
@@ -531,7 +531,7 @@ int ubifs_log_post_commit(struct ubifs_info *c, int old_ltail_lnum)
 	for (lnum = old_ltail_lnum; lnum != c->ltail_lnum;			// 释放这次commit用来存储journal内容的log LEB，ubifs_log_start_commit结束后之前c->ltail_lnum号LEB一直到c->lhead_lnum的log LEB都被释放
 	     lnum = ubifs_next_log_lnum(c, lnum)) {
 		dbg_log("unmap log LEB %d", lnum);
-		err = ubifs_leb_unmap(c, lnum);
+		err = ubifs_leb_unmap(c, lnum);					// free掉用于日志记录的LEB
 		if (err)
 			goto out;
 	}

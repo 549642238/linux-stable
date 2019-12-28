@@ -473,7 +473,7 @@ enum {
  * @list: list of same-category lprops (for LPROPS_EMPTY and LPROPS_FREEABLE)
  * @hpos: heap position in heap of same-category lprops (other categories)
  */
-struct ubifs_lprops {
+struct ubifs_lprops {								// LEB properties in main area
 	int free;
 	int dirty;
 	int flags;
@@ -491,7 +491,7 @@ struct ubifs_lprops {
  * @tgc: trivial GC flag (1 => unmap after commit end)
  * @cmt: commit flag (1 => reserved for commit)
  */
-struct ubifs_lpt_lprops {
+struct ubifs_lpt_lprops {							// LEB properties in LPT
 	int free;
 	int dirty;
 	unsigned tgc:1;
@@ -546,7 +546,7 @@ struct ubifs_nnode;
  * @level: level in the tree (zero for pnodes, greater than zero for nnodes)
  * @num: node number
  */
-struct ubifs_cnode {
+struct ubifs_cnode {								// LPT中的节点（叶子或中间节点）
 	struct ubifs_nnode *parent;
 	struct ubifs_cnode *cnext;
 	unsigned long flags;
@@ -565,7 +565,7 @@ struct ubifs_cnode {
  * @num: node number
  * @lprops: LEB properties array
  */
-struct ubifs_pnode {
+struct ubifs_pnode {								// LPT中的叶子节点
 	struct ubifs_nnode *parent;
 	struct ubifs_cnode *cnext;
 	unsigned long flags;
@@ -1251,40 +1251,40 @@ struct ubifs_debug_info;
  * @dbg: debugging-related information
  */
 struct ubifs_info {
-	struct super_block *vfs_sb;
-	struct ubifs_sb_node *sup_node;
+	struct super_block *vfs_sb;						// 指向vfs超级块
+	struct ubifs_sb_node *sup_node;						// 指向超级块(on Flash)
 
-	ino_t highest_inum;
-	unsigned long long max_sqnum;
-	unsigned long long cmt_no;
-	spinlock_t cnt_lock;
-	int fmt_version;
+	ino_t highest_inum;							// 文件系统中最大的ino号
+	unsigned long long max_sqnum;						// 当前文件系统全局最大的inode序号，新建就会增加，用以区分新旧版本
+	unsigned long long cmt_no;						// 文件系统commit号，每次do_commit加一，日志区cs node和orphan区的node有对应的commit号
+	spinlock_t cnt_lock;							// 保护highest_inum和max_sqnum
+	int fmt_version;							// Flash上格式化ubifs的版本
 	int ro_compat_version;
-	unsigned char uuid[16];
+	unsigned char uuid[16];							// 超级块的UUID
 
 	int lhead_lnum;								// 用于记录日志的log LEB开始块号
 	int lhead_offs;								// 日志记录在块内c->lhead_lnum的开始偏移
 	int ltail_lnum;								// 用于记录日志的log LEB结束块号
-	struct mutex log_mutex;							// 保护lhead_lnum、lhead_offs、ltail_lnum变量
+	struct mutex log_mutex;							// 保护lhead_lnum、lhead_offs、ltail_lnum锁
 	int min_log_bytes;							// 每次写入日志前必须在log LEB保留min_log_bytes字节，以供commit使用
 	long long cmt_bud_bytes;
 
 	struct rb_root buds;
 	long long bud_bytes;
 	spinlock_t buds_lock;
-	int jhead_cnt;
-	struct ubifs_jhead *jheads;
+	int jhead_cnt;								// 缓存中的journal entry数量，ubifs将用户写入数据缓存到write buffer，然后再由write buffer刷到Flash上以提高写效率
+	struct ubifs_jhead *jheads;						// 缓存中的journal
 	long long max_bud_bytes;
 	long long bg_bud_bytes;
 	struct list_head old_buds;
 	int max_bud_cnt;
 
 	struct rw_semaphore commit_sem;						// 用于提交保护操作的信号量，控制提交操作不并行
-	int cmt_state;
-	spinlock_t cs_lock;
+	int cmt_state;								// 提交状态
+	spinlock_t cs_lock;							// 保护cmt_state
 	wait_queue_head_t cmt_wq;
 
-	unsigned int big_lpt:1;
+	unsigned int big_lpt:1;							// lpt默认是small模式，也可以是Big模式
 	unsigned int space_fixup:1;
 	unsigned int double_hash:1;
 	unsigned int encrypted:1;
@@ -1296,24 +1296,24 @@ struct ubifs_info {
 	unsigned int authenticated:1;
 	unsigned int superblock_need_write:1;
 
-	struct mutex tnc_mutex;
-	struct ubifs_zbranch zroot;
-	struct ubifs_znode *cnext;
-	struct ubifs_znode *enext;
-	int *gap_lebs;
-	void *cbuf;
-	void *ileb_buf;
-	int ileb_len;
-	int ihead_lnum;
-	int ihead_offs;
-	int *ilebs;
-	int ileb_cnt;
-	int ileb_nxt;
-	struct rb_root old_idx;
+	struct mutex tnc_mutex;							// 保护TNC tree的数据结构
+	struct ubifs_zbranch zroot;						// TNC Tree的root
+	struct ubifs_znode *cnext;						// TNC start commit时要将dirty index node放入cnext链表
+	struct ubifs_znode *enext;						// TNC start commit时要将从enext开始的cnext链表中剩余的dirty index node放入完整空闲的index LEB，enext之前的dirty index node已经被安排到对应的gap LEB内
+	int *gap_lebs;								// TNC start commit时记录以gap方式放置dirty index node的LEB号
+	void *cbuf;								// TNC end commit将index node写入Flash的buf内容
+	void *ileb_buf;								// TNC start commit时以gap方式写入dirty index node的buf
+	int ileb_len;								// ileb_buf长度
+	int ihead_lnum;								// 可以直接写入index node的index LEB号
+	int ihead_offs;								// 可以直接写入index node的index LEB偏移
+	int *ilebs;								// TNC start commit时记录以empty index LEB方式放置dirty index node的LEB号
+	int ileb_cnt;								// TNC start commit时为dirty index node写入Flash申请的empty index LEB数量
+	int ileb_nxt;								// 实际写入dirty index node占用的empty index LEB数量，有些index node可以直接写入上次申请还有空闲空间的index LEB，可能不一定用完申请的empty index LEB
+	struct rb_root old_idx;							// 上次提交结束的old index node，保留用作恢复
 	int *bottom_up_buf;
 
-	struct ubifs_mst_node *mst_node;
-	int mst_offs;
+	struct ubifs_mst_node *mst_node;					// master node
+	int mst_offs;								// master node在LEB中的偏移
 
 	int max_bu_buf_len;
 	struct mutex bu_mutex;
@@ -1322,18 +1322,19 @@ struct ubifs_info {
 	struct mutex write_reserve_mutex;
 	void *write_reserve_buf;
 
-	int log_lebs;
-	long long log_bytes;
-	int log_last;
-	int lpt_lebs;
-	int lpt_first;
-	int lpt_last;
+	/* ubifs将文件系统划分成6个区，LEB0作为超级块；LEB1、2作为master node；日志区（可配置大小）；LPT区（由Flash大小计算）；orphan区（固定大小）；main area(index/non-index node) */
+	int log_lebs;								// 用于日志记录的LEB数量
+	long long log_bytes;							// 用于日志记录的空间
+	int log_last;								// 日志区域的结束LEB号
+	int lpt_lebs;								// 用于记录LPT的LEB数量
+	int lpt_first;								// 可用于记录LPT的开始LEB号
+	int lpt_last;								// 可用于记录LPT的结束LEB号
 	int orph_lebs;								// 可以用于存放orphan node数据的LEB数量
 	int orph_first;								// 可以用于存放orphan node数据的开始LEB块号
 	int orph_last;								// 可以用于存放orphan node数据的结束LEB块号
-	int main_lebs;
-	int main_first;
-	long long main_bytes;
+	int main_lebs;								// main area的LEB数量
+	int main_first;								// main area的开始LEB号
+	long long main_bytes;							// main area大小
 
 	uint8_t key_hash_type;
 	uint32_t (*key_hash)(const char *str, int len);
@@ -1342,16 +1343,16 @@ struct ubifs_info {
 	int hash_len;
 	int fanout;
 
-	int min_io_size;
+	int min_io_size;							// Flash最小IO单元(BYTES)
 	int min_io_shift;
 	int max_write_size;
 	int max_write_shift;
-	int leb_size;
-	int leb_start;
+	int leb_size;								// LEB大小
+	int leb_start;								// LEB开始块号
 	int half_leb_size;
 	int idx_leb_size;
-	int leb_cnt;
-	int max_leb_cnt;
+	int leb_cnt;								// LEB数量
+	int max_leb_cnt;							// 最大LEB数量，ubifs文件系统在更大的Flash卷下支持resize
 	unsigned int ro_media:1;
 	unsigned int ro_mount:1;
 	unsigned int ro_error:1;
@@ -1361,14 +1362,14 @@ struct ubifs_info {
 	atomic_long_t clean_zn_cnt;
 
 	spinlock_t space_lock;
-	struct ubifs_lp_stats lst;
+	struct ubifs_lp_stats lst;						// 针对main area的空闲、使用、脏块统计数据
 	struct ubifs_budg_info bi;
 	unsigned long long calc_idx_sz;
 
-	int ref_node_alsz;
-	int mst_node_alsz;
-	int min_idx_node_sz;
-	int max_idx_node_sz;
+	int ref_node_alsz;							// 对齐后的reference node大小
+	int mst_node_alsz;							// 对齐后的master node大小
+	int min_idx_node_sz;							// 最小8字节对齐后index node大小（B+树每个节点可能有多个分支，分支数量会影响index node大小）
+	int max_idx_node_sz;							// 最大8字节对齐后index node大小
 	long long max_inode_sz;
 	int max_znode_sz;
 
@@ -1419,29 +1420,29 @@ struct ubifs_info {
 	int lpt_spc_bits;
 	int pcnt_bits;
 	int lnum_bits;
-	int nnode_sz;
-	int pnode_sz;
-	int ltab_sz;
+	int nnode_sz;								// nnode的大小
+	int pnode_sz;								// pnode大小
+	int ltab_sz;								// LPT大小
 	int lsave_sz;
-	int pnode_cnt;
-	int nnode_cnt;
+	int pnode_cnt;								// pnode数量
+	int nnode_cnt;								// nnode数量
 	int lpt_hght;
 	int pnodes_have;
 
-	struct mutex lp_mutex;
-	int lpt_lnum;
-	int lpt_offs;
-	int nhead_lnum;
-	int nhead_offs;
+	struct mutex lp_mutex;							// 保护LPT
+	int lpt_lnum;								// root nnode写入的LEB号
+	int lpt_offs;								// root nnode写入到LEB的offset
+	int nhead_lnum;								// cnode（用于描述main area LEB的节点）写入的LEB号
+	int nhead_offs;								// cnode（用于描述main area LEB的节点）写入到LEB的offset
 	int lpt_drty_flgs;
 	int dirty_nn_cnt;
 	int dirty_pn_cnt;
 	int check_lpt_free;
 	long long lpt_sz;
-	void *lpt_nod_buf;
-	void *lpt_buf;
-	struct ubifs_nnode *nroot;
-	struct ubifs_cnode *lpt_cnext;
+	void *lpt_nod_buf;							// 从Flash上读取nnode时用于存放数据的临时buffer
+	void *lpt_buf;								// LPT end commit将cnode写入Flash的buf内容
+	struct ubifs_nnode *nroot;						// lpt的根
+	struct ubifs_cnode *lpt_cnext;						// LPT start commit时，所有dirty cnode放入该单链表
 	struct ubifs_lpt_heap lpt_heap[LPROPS_HEAP_CNT];
 	struct ubifs_lpt_heap dirty_idx;
 	struct list_head uncat_list;
@@ -1451,8 +1452,8 @@ struct ubifs_info {
 	int freeable_cnt;
 	int in_a_category_cnt;
 
-	int ltab_lnum;
-	int ltab_offs;
+	int ltab_lnum;								// cnode（用于描述lpt管理自己LEB的节点）写入的LEB号
+	int ltab_offs;								// cnode（用于描述lpt管理自己LEB的节点）写入到LEB的offset
 	struct ubifs_lpt_lprops *ltab;
 	struct ubifs_lpt_lprops *ltab_cmt;
 	int lsave_cnt;
@@ -1476,10 +1477,10 @@ struct ubifs_info {
 	struct shash_desc *log_hash;
 
 	/* The below fields are used only during mounting and re-mounting */
-	unsigned int empty:1;
+	unsigned int empty:1;							// ubi卷上没有ubifs，需要format，mount时检查
 	unsigned int need_recovery:1;
-	unsigned int replaying:1;
-	unsigned int mounting:1;
+	unsigned int replaying:1;						// ubifs文件系统正在执行log replay
+	unsigned int mounting:1;						// ubifs文件系统正在被mount
 	unsigned int remounting_rw:1;
 	unsigned int probing:1;
 	struct list_head replay_list;

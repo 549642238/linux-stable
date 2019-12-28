@@ -229,7 +229,7 @@ static int layout_leb_in_gaps(struct ubifs_info *c, int *p)
 
 	tot_written = 0;
 	/* Get an index LEB with lots of obsolete index nodes */
-	lnum = ubifs_find_dirty_idx_leb(c);
+	lnum = ubifs_find_dirty_idx_leb(c);					// 找到最‘脏’的index LEB，dirty index node（过时节点）最多
 	if (lnum < 0)
 		/*
 		 * There also may be dirt in the index head that could be
@@ -258,7 +258,7 @@ static int layout_leb_in_gaps(struct ubifs_info *c, int *p)
 		level = le16_to_cpu(idx->level);
 		/* Determine if the index node is in use (not obsolete) */
 		in_use = is_idx_node_in_use(c, &snod->key, level, lnum,
-					    snod->offs);
+					    snod->offs);			// 插入index node到gap时，必须是在非过时index node之间
 		if (in_use < 0) {
 			ubifs_scan_destroy(sleb);
 			return in_use; /* Error code */
@@ -360,14 +360,14 @@ static int layout_in_gaps(struct ubifs_info *c, int cnt)
 	dbg_gc("%d znodes to write", cnt);
 
 	c->gap_lebs = kmalloc_array(c->lst.idx_lebs + 1, sizeof(int),
-				    GFP_NOFS);
+				    GFP_NOFS);					// 记录index node被塞入gap的LEB块号
 	if (!c->gap_lebs)
 		return -ENOMEM;
 
 	p = c->gap_lebs;
 	do {
 		ubifs_assert(c, p < c->gap_lebs + c->lst.idx_lebs);
-		written = layout_leb_in_gaps(c, p);
+		written = layout_leb_in_gaps(c, p);				// 把written个index node塞入gap，写入非empty的idnex LEB
 		if (written < 0) {
 			err = written;
 			if (err != -ENOSPC) {
@@ -412,7 +412,7 @@ static int layout_in_empty_space(struct ubifs_info *c)
 	int lnum, offs, len, next_len, buf_len, buf_offs, used, avail;
 	int wlen, blen, err;
 
-	cnext = c->enext;
+	cnext = c->enext;							// 所有dirty index node放在c->cnext链表，但是有一部分可能已经被塞入gap LEB，剩下的dirty index node从c->enext开始（最开始c->enext=c->cnext）
 	if (!cnext)
 		return 0;
 
@@ -432,7 +432,7 @@ static int layout_in_empty_space(struct ubifs_info *c)
 	while (1) {
 		znode = cnext;
 
-		len = ubifs_idx_node_sz(c, znode->child_cnt);
+		len = ubifs_idx_node_sz(c, znode->child_cnt);			// index node长度
 
 		/* Determine the index node position */
 		if (lnum == -1) {
@@ -440,7 +440,7 @@ static int layout_in_empty_space(struct ubifs_info *c)
 				ubifs_err(c, "out of space");
 				return -ENOSPC;
 			}
-			lnum = c->ilebs[c->ileb_nxt++];
+			lnum = c->ilebs[c->ileb_nxt++];				// 需要用到申请的freeable index LEB
 			buf_offs = 0;
 			used = 0;
 			avail = buf_len;
@@ -448,11 +448,11 @@ static int layout_in_empty_space(struct ubifs_info *c)
 
 		offs = buf_offs + used;
 
-		znode->lnum = lnum;
-		znode->offs = offs;
-		znode->len = len;
+		znode->lnum = lnum;						// 要写入index node的LEB号
+		znode->offs = offs;						// 要写入index node的偏移
+		znode->len = len;						// 要写入index node的长度
 
-		/* Update the parent */
+		/* Update the parent */						// index node更新会影响parent，内存中的TNC tree也一样要更新
 		zp = znode->parent;
 		if (zp) {
 			struct ubifs_zbranch *zbr;
@@ -545,16 +545,16 @@ static int layout_in_empty_space(struct ubifs_info *c)
  * the end of the last commit.  To write "in-the-gaps" requires that those index
  * LEBs are updated atomically in-place.
  */
-static int layout_commit(struct ubifs_info *c, int no_space, int cnt)
+static int layout_commit(struct ubifs_info *c, int no_space, int cnt)		// 计算每个index node在Flash上的存储布局（lnum+offset）,如果当前free LEB数量不够容纳所有index node，将在非空index LEB的非过时index node间隙插入index node
 {
 	int err;
 
 	if (no_space) {
-		err = layout_in_gaps(c, cnt);
+		err = layout_in_gaps(c, cnt);					// 需要先把部分index node写入非空闲的index LEB的非过时index node的gap中，保证剩下的index node可以全部被放入预留的空闲的index LEB，budget子系统保证了填入gap后剩余的index node可以被完全放入空闲index LEB
 		if (err)
 			return err;
 	}
-	err = layout_in_empty_space(c);
+	err = layout_in_empty_space(c);						// 空闲的index LEB足够容纳所有要写入的index node
 	return err;
 }
 
@@ -619,12 +619,12 @@ static struct ubifs_znode *find_next_dirty(struct ubifs_znode *znode)
  *
  * This function returns the number of znodes to commit.
  */
-static int get_znodes_to_commit(struct ubifs_info *c)
+static int get_znodes_to_commit(struct ubifs_info *c)				// 找到TNC tree中所有dirty znode，将所有znode串到c->cnext链表中，返回dirty znode数量
 {
 	struct ubifs_znode *znode, *cnext;
 	int cnt = 0;
 
-	c->cnext = find_first_dirty(c->zroot.znode);
+	c->cnext = find_first_dirty(c->zroot.znode);				// TNC tree中任意一个znode变脏root znode一定变脏
 	znode = c->enext = c->cnext;
 	if (!znode) {
 		dbg_cmt("no znodes to commit");
@@ -635,7 +635,7 @@ static int get_znodes_to_commit(struct ubifs_info *c)
 		ubifs_assert(c, !ubifs_zn_cow(znode));
 		__set_bit(COW_ZNODE, &znode->flags);
 		znode->alt = 0;
-		cnext = find_next_dirty(znode);
+		cnext = find_next_dirty(znode);					// 找到下一个dirty znode
 		if (!cnext) {
 			znode->cnext = c->cnext;
 			break;
@@ -660,24 +660,24 @@ static int get_znodes_to_commit(struct ubifs_info *c)
  * empty LEBs.  %0 is returned on success, otherwise a negative error code
  * is returned.
  */
-static int alloc_idx_lebs(struct ubifs_info *c, int cnt)
+static int alloc_idx_lebs(struct ubifs_info *c, int cnt)			// 为index node提交申请LEB
 {
 	int i, leb_cnt, lnum;
 
 	c->ileb_cnt = 0;
 	c->ileb_nxt = 0;
-	leb_cnt = get_leb_cnt(c, cnt);
+	leb_cnt = get_leb_cnt(c, cnt);						// 给定cnt个index node需要多少LEB存放
 	dbg_cmt("need about %d empty LEBS for TNC commit", leb_cnt);
 	if (!leb_cnt)
 		return 0;
-	c->ilebs = kmalloc_array(leb_cnt, sizeof(int), GFP_NOFS);
+	c->ilebs = kmalloc_array(leb_cnt, sizeof(int), GFP_NOFS);		// 记录存放index node的LEB号，这些LEB可以整块被用来存放index node
 	if (!c->ilebs)
 		return -ENOMEM;
 	for (i = 0; i < leb_cnt; i++) {
-		lnum = ubifs_find_free_leb_for_idx(c);
+		lnum = ubifs_find_free_leb_for_idx(c);				// 获取空闲块
 		if (lnum < 0)
 			return lnum;
-		c->ilebs[c->ileb_cnt++] = lnum;
+		c->ilebs[c->ileb_cnt++] = lnum;					// 记录要存放index node的空闲LEB号，已经有c->ileb_cnt个LEB可以整块用来存放index node
 		dbg_cmt("LEB %d", lnum);
 	}
 	if (dbg_is_chk_index(c) && !(prandom_u32() & 7))
@@ -743,27 +743,27 @@ int ubifs_tnc_start_commit(struct ubifs_info *c, struct ubifs_zbranch *zroot)
 	err = dbg_check_tnc(c, 1);
 	if (err)
 		goto out;
-	cnt = get_znodes_to_commit(c);
+	cnt = get_znodes_to_commit(c);						// 获得dirty znode数量，所有的dirty znode都被放入c->cnext链表
 	if (cnt != 0) {
 		int no_space = 0;
 
-		err = alloc_idx_lebs(c, cnt);
+		err = alloc_idx_lebs(c, cnt);					// 为dirty index node申请c->ileb_cnt个LEB，可能空闲的LEB不够，但没关系在layout_commit中可以填充index node到一些非空index LEB的gap中
 		if (err == -ENOSPC)
 			no_space = 1;
 		else if (err)
 			goto out_free;
-		err = layout_commit(c, no_space, cnt);
+		err = layout_commit(c, no_space, cnt);				// 把每个index node在LEB中的存储布局（lnum和offset）计算出来，并保存在每个要提交znode中(c->cnext)
 		if (err)
 			goto out_free;
 		ubifs_assert(c, atomic_long_read(&c->dirty_zn_cnt) == 0);
-		err = free_unused_idx_lebs(c);
+		err = free_unused_idx_lebs(c);					// 可能申请index LEB并不一定完全用完（layout时预留的空闲LEB是按dirty index node数量*最大index node大小计算的，实际上的index node并不一定都是那么大；写入empty index LEB的dirty index node可以从上次申请的empty index LEB未用完的部分接着写），释放掉剩余的c->ileb_cnt - c->ileb_nxt
 		if (err)
 			goto out;
 	}
 	destroy_old_idx(c);
 	memcpy(zroot, &c->zroot, sizeof(struct ubifs_zbranch));
 
-	err = ubifs_save_dirty_idx_lnums(c);
+	err = ubifs_save_dirty_idx_lnums(c);					// 记录dirty index LEB，在layout_leb_in_gaps需要将index node塞到非空index LEB的非过时index node间，最优先找的就是这样的LEB
 	if (err)
 		goto out;
 
@@ -1067,11 +1067,11 @@ int ubifs_tnc_end_commit(struct ubifs_info *c)
 	if (!c->cnext)
 		return 0;
 
-	err = return_gap_lebs(c);
+	err = return_gap_lebs(c);						// 取消用于in-gap layout index node的LEB的TAKEN标志位
 	if (err)
 		return err;
 
-	err = write_index(c);
+	err = write_index(c);							// 将剩余dirty index node写入Flash
 	if (err)
 		return err;
 

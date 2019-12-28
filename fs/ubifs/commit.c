@@ -94,7 +94,7 @@ static int nothing_to_commit(struct ubifs_info *c)
  * locked. Returns zero in case of success and a negative error code in case of
  * failure.
  */
-static int do_commit(struct ubifs_info *c)
+static int do_commit(struct ubifs_info *c)					// 提交，内存中的dirty数据回写到Flash的操作
 {
 	int err, new_ltail_lnum, old_ltail_lnum, i;
 	struct ubifs_zbranch zroot;
@@ -108,7 +108,7 @@ static int do_commit(struct ubifs_info *c)
 		goto out_up;
 	}
 
-	if (nothing_to_commit(c)) {
+	if (nothing_to_commit(c)) {						// 可能没有东西需要提交
 		up_write(&c->commit_sem);
 		err = 0;
 		goto out_cancel;
@@ -116,28 +116,28 @@ static int do_commit(struct ubifs_info *c)
 
 	/* Sync all write buffers (necessary for recovery) */
 	for (i = 0; i < c->jhead_cnt; i++) {
-		err = ubifs_wbuf_sync(&c->jheads[i].wbuf);
+		err = ubifs_wbuf_sync(&c->jheads[i].wbuf);			// 将write buffer中的数据写回LEB，因为后面的log commit node记录的lnum和leb_off_set都是基于已经将write buffer写入到LEB中的事实
 		if (err)
 			goto out_up;
 	}
 
-	c->cmt_no += 1;
-	err = ubifs_gc_start_commit(c);
+	c->cmt_no += 1;								// commit号加一
+	err = ubifs_gc_start_commit(c);						// 垃圾回收，可以被回收的freeable index/non-index LEB
 	if (err)
 		goto out_up;
 	err = dbg_check_lprops(c);
 	if (err)
 		goto out_up;
-	err = ubifs_log_start_commit(c, &new_ltail_lnum);			// 开始提交日志
+	err = ubifs_log_start_commit(c, &new_ltail_lnum);			// 日志提交，将操作以node方式组织并写入到日志专用的LEB
 	if (err)
 		goto out_up;
-	err = ubifs_tnc_start_commit(c, &zroot);
+	err = ubifs_tnc_start_commit(c, &zroot);				// 提交index node，将内存中的dirty znode布局到Flash
 	if (err)
 		goto out_up;
-	err = ubifs_lpt_start_commit(c);
+	err = ubifs_lpt_start_commit(c);					// 提交lpt，流程和TNC start commit类似
 	if (err)
 		goto out_up;
-	err = ubifs_orphan_start_commit(c);
+	err = ubifs_orphan_start_commit(c);					// 将要提交的孤儿节点放入c->orph_cnext链表
 	if (err)
 		goto out_up;
 
@@ -145,13 +145,13 @@ static int do_commit(struct ubifs_info *c)
 
 	up_write(&c->commit_sem);
 
-	err = ubifs_tnc_end_commit(c);
+	err = ubifs_tnc_end_commit(c);						// 将内存中的dirty znode写入到empty Flash对应位置，ubifs_tnc_start_commit已经布局了这些znode在Flash上的位置并且将部分znode写入到了dirty index LEB的gap中
 	if (err)
 		goto out;
-	err = ubifs_lpt_end_commit(c);
+	err = ubifs_lpt_end_commit(c);						// 将内存中的dirty lpt node写入Flash
 	if (err)
 		goto out;
-	err = ubifs_orphan_end_commit(c);
+	err = ubifs_orphan_end_commit(c);					// 写入孤儿节点到Flash
 	if (err)
 		goto out;
 	err = dbg_check_old_index(c, &zroot);
@@ -188,23 +188,23 @@ static int do_commit(struct ubifs_info *c)
 		c->mst_node->flags &= ~cpu_to_le32(UBIFS_MST_NO_ORPHS);
 
 	old_ltail_lnum = c->ltail_lnum;						// 本次提交的journal内容包括从c->ltail_lnum到c->lhead_lnum的log LEB
-	err = ubifs_log_end_commit(c, new_ltail_lnum);				// 日志提交完成
+	err = ubifs_log_end_commit(c, new_ltail_lnum);				// 提交结束，log LEB中的内容无效，回写master node，如果master node回写失败c->mst_node->log_lnum没有得到更新，log_reply还是会重新执行log LEB中的内容重新提交
 	if (err)
 		goto out;
 
-	err = ubifs_log_post_commit(c, old_ltail_lnum);				// 日志提交结束后续清理
+	err = ubifs_log_post_commit(c, old_ltail_lnum);				// 释放掉用于日志提交的LEB，必须在日志提交结束后
 	if (err)
 		goto out;
-	err = ubifs_gc_end_commit(c);
+	err = ubifs_gc_end_commit(c);						// 释放垃圾回收选中的index LEB，必须在TNC提交结束后
 	if (err)
 		goto out;
-	err = ubifs_lpt_post_commit(c);
+	err = ubifs_lpt_post_commit(c);						// 垃圾回收LPT LEB，必须在LPT提交结束后
 	if (err)
 		goto out;
 
 out_cancel:
 	spin_lock(&c->cs_lock);
-	c->cmt_state = COMMIT_RESTING;
+	c->cmt_state = COMMIT_RESTING;						// 修改提交状态
 	wake_up(&c->cmt_wq);
 	dbg_cmt("commit end");
 	spin_unlock(&c->cs_lock);

@@ -867,22 +867,22 @@ int ubifs_gc_start_commit(struct ubifs_info *c)
 	const struct ubifs_lprops *lp;
 	int err = 0, flags;
 
-	ubifs_get_lprops(c);
+	ubifs_get_lprops(c);							// 垃圾回收和lpt相互影响（垃圾回收影响LEB的free space、dirty space），需要对lpt上锁
 
 	/*
 	 * Unmap (non-index) freeable LEBs. Note that recovery requires that all
 	 * wbufs are sync'd before this, which is done in 'do_commit()'.
 	 */
 	while (1) {
-		lp = ubifs_fast_find_freeable(c);
+		lp = ubifs_fast_find_freeable(c);				// 寻找flag为freeable在main area的非index leb properties
 		if (!lp)
 			break;
 		ubifs_assert(c, !(lp->flags & LPROPS_TAKEN));
 		ubifs_assert(c, !(lp->flags & LPROPS_INDEX));
-		err = ubifs_leb_unmap(c, lp->lnum);
+		err = ubifs_leb_unmap(c, lp->lnum);				// 释放LEB
 		if (err)
 			goto out;
-		lp = ubifs_change_lp(c, lp, c->leb_size, 0, lp->flags, 0);
+		lp = ubifs_change_lp(c, lp, c->leb_size, 0, lp->flags, 0);	// 改变lp属性和更新c->lst(struct ubifs_lp_stats)
 		if (IS_ERR(lp)) {
 			err = PTR_ERR(lp);
 			goto out;
@@ -892,12 +892,12 @@ int ubifs_gc_start_commit(struct ubifs_info *c)
 	}
 
 	/* Mark GC'd index LEBs OK to unmap after this commit finishes */
-	list_for_each_entry(idx_gc, &c->idx_gc, list)
+	list_for_each_entry(idx_gc, &c->idx_gc, list)				// 还在GC list中存在的index LEB被标记为unmap flag，在gc end commit时才能被unmap
 		idx_gc->unmap = 1;
 
 	/* Record index freeable LEBs for unmapping after commit */
 	while (1) {
-		lp = ubifs_fast_find_frdi_idx(c);
+		lp = ubifs_fast_find_frdi_idx(c);				// 寻找flag为freeable的index leb properties
 		if (IS_ERR(lp)) {
 			err = PTR_ERR(lp);
 			goto out;
@@ -923,7 +923,7 @@ int ubifs_gc_start_commit(struct ubifs_info *c)
 		ubifs_assert(c, !(lp->flags & LPROPS_INDEX));
 		idx_gc->lnum = lp->lnum;
 		idx_gc->unmap = 1;
-		list_add(&idx_gc->list, &c->idx_gc);
+		list_add(&idx_gc->list, &c->idx_gc);				// 可以被GC的index LEB加入c->idx_gc，在gc end commit时才能被unmap，防止TNC tree对index node提交失败无法恢复
 	}
 out:
 	ubifs_release_lprops(c);
@@ -947,7 +947,7 @@ int ubifs_gc_end_commit(struct ubifs_info *c)
 	list_for_each_entry_safe(idx_gc, tmp, &c->idx_gc, list)
 		if (idx_gc->unmap) {
 			dbg_gc("LEB %d", idx_gc->lnum);
-			err = ubifs_leb_unmap(c, idx_gc->lnum);
+			err = ubifs_leb_unmap(c, idx_gc->lnum);			// 释放掉垃圾回收选中的index LEB，这一步只有在TNC tree提交成功才可以做，防止TNC提交index node失败而而无法恢复
 			if (err)
 				goto out;
 			err = ubifs_change_one_lp(c, idx_gc->lnum, LPROPS_NC,
