@@ -144,7 +144,7 @@ enum {
 
 /* struct worker is defined in workqueue_internal.h */
 
-struct worker_pool {
+struct worker_pool {								// worker的集合
 	spinlock_t		lock;		/* the pool lock */
 	int			cpu;		/* I: the associated cpu */
 	int			node;		/* I: the associated node ID */
@@ -153,12 +153,12 @@ struct worker_pool {
 
 	unsigned long		watchdog_ts;	/* L: watchdog timestamp */
 
-	struct list_head	worklist;	/* L: list of pending works */
+	struct list_head	worklist;	/* L: list of pending works */	// 该worker pool上排了多少个任务待处理
 
-	int			nr_workers;	/* L: total number of workers */
-	int			nr_idle;	/* L: currently idle workers */
+	int			nr_workers;	/* L: total number of workers */// 该worker pool有多少个worker
+	int			nr_idle;	/* L: currently idle workers */	// 有几个worker处于闲置状态
 
-	struct list_head	idle_list;	/* X: list of idle workers */
+	struct list_head	idle_list;	/* X: list of idle workers */	// 闲置的worker链表
 	struct timer_list	idle_timer;	/* L: worker idle timeout */
 	struct timer_list	mayday_timer;	/* L: SOS timer for workers */
 
@@ -166,8 +166,8 @@ struct worker_pool {
 	DECLARE_HASHTABLE(busy_hash, BUSY_WORKER_HASH_ORDER);
 						/* L: hash of busy workers */
 
-	struct worker		*manager;	/* L: purely informational */
-	struct list_head	workers;	/* A: attached workers */
+	struct worker		*manager;	/* L: purely informational */	// 每个worker pool都一个manger worker用于创建和销毁worker
+	struct list_head	workers;	/* A: attached workers */	// 该worker pool上所有的worker
 	struct completion	*detach_completion; /* all workers detached */
 
 	struct ida		worker_ida;	/* worker IDs for task name */
@@ -196,19 +196,19 @@ struct worker_pool {
  * point to the pwq; thus, pwqs need to be aligned at two's power of the
  * number of flag bits.
  */
-struct pool_workqueue {
-	struct worker_pool	*pool;		/* I: the associated pool */
-	struct workqueue_struct *wq;		/* I: the owning workqueue */
+struct pool_workqueue {								// worker pool和workqueue是多对多的关系，每一个对应关系都会构成一个pwq
+	struct worker_pool	*pool;		/* I: the associated pool */	// 指向的worker pool
+	struct workqueue_struct *wq;		/* I: the owning workqueue */	// 指向的workqueue
 	int			work_color;	/* L: current color */
 	int			flush_color;	/* L: flushing color */
-	int			refcnt;		/* L: reference count */
+	int			refcnt;		/* L: reference count */	// 引用计数，insert work和加入mayday list都会增加引用计数
 	int			nr_in_flight[WORK_NR_COLORS];
 						/* L: nr of in_flight works */
-	int			nr_active;	/* L: nr of active works */
-	int			max_active;	/* L: max active works */
-	struct list_head	delayed_works;	/* L: delayed works */
+	int			nr_active;	/* L: nr of active works */	// 当前要处理的任务数量
+	int			max_active;	/* L: max active works */	// 该pwq上允许最大的任务数量
+	struct list_head	delayed_works;	/* L: delayed works */		// 超出max_active的任务都被放入delay list
 	struct list_head	pwqs_node;	/* WR: node on wq->pwqs */
-	struct list_head	mayday_node;	/* MD: node on wq->maydays */
+	struct list_head	mayday_node;	/* MD: node on wq->maydays */	// 链入workqueue的mayday链表，代表该pwq无法创建worker需要rescuer thread帮忙处理work
 
 	/*
 	 * Release of unbound pwq is punted to system_wq.  See put_pwq()
@@ -237,7 +237,7 @@ struct wq_device;
  */
 struct workqueue_struct {
 	struct list_head	pwqs;		/* WR: all pwqs of this wq */
-	struct list_head	list;		/* PR: list of all workqueues */
+	struct list_head	list;		/* PR: list of all workqueues */// 所有workqueue实例链入全局workqueues链表
 
 	struct mutex		mutex;		/* protects this wq */
 	int			work_color;	/* WQ: current work color */
@@ -247,8 +247,8 @@ struct workqueue_struct {
 	struct list_head	flusher_queue;	/* WQ: flush waiters */
 	struct list_head	flusher_overflow; /* WQ: flush overflow list */
 
-	struct list_head	maydays;	/* MD: pwqs requesting rescue */
-	struct worker		*rescuer;	/* I: rescue worker */
+	struct list_head	maydays;	/* MD: pwqs requesting rescue */// 有多少个pwq需要被rescue
+	struct worker		*rescuer;	/* I: rescue worker */		// rescuer thread对应的worker，非普通worker thread
 
 	int			nr_drainers;	/* WQ: drain in progress */
 	int			saved_max_active; /* WQ: saved pwq max_active */
@@ -264,7 +264,7 @@ struct workqueue_struct {
 	struct lock_class_key	key;
 	struct lockdep_map	lockdep_map;
 #endif
-	char			name[WQ_NAME_LEN]; /* I: workqueue name */
+	char			name[WQ_NAME_LEN]; /* I: workqueue name */	// workqueue名字，创建workqueue时可指定
 
 	/*
 	 * Destruction of workqueue_struct is RCU protected to allow walking
@@ -499,7 +499,7 @@ static inline void debug_work_deactivate(struct work_struct *work)
 	debug_object_deactivate(work, &work_debug_descr);
 }
 
-void __init_work(struct work_struct *work, int onstack)
+void __init_work(struct work_struct *work, int onstack)				// 初始化任务
 {
 	if (onstack)
 		debug_object_init_on_stack(work, &work_debug_descr);
@@ -1137,7 +1137,7 @@ static void put_pwq_unlocked(struct pool_workqueue *pwq)
 	}
 }
 
-static void pwq_activate_delayed_work(struct work_struct *work)
+static void pwq_activate_delayed_work(struct work_struct *work)			// 将work从delay list移到worklist
 {
 	struct pool_workqueue *pwq = get_work_pwq(work);
 
@@ -1169,15 +1169,15 @@ static void pwq_activate_first_delayed(struct pool_workqueue *pwq)
  * spin_lock_irq(pool->lock).
  */
 static void pwq_dec_nr_in_flight(struct pool_workqueue *pwq, int color)
-{
+{										// 处理完任务后要释放pwq的引用计数
 	/* uncolored work items don't participate in flushing or nr_active */
 	if (color == WORK_NO_COLOR)
 		goto out_put;
 
 	pwq->nr_in_flight[color]--;
 
-	pwq->nr_active--;
-	if (!list_empty(&pwq->delayed_works)) {
+	pwq->nr_active--;							// 已经处理完一个任务，可以将nr_active - 1
+	if (!list_empty(&pwq->delayed_works)) {					// 如果delay list中存在任务，将第一个delayed work移入worker pool的worklist
 		/* one down, submit a delayed one */
 		if (pwq->nr_active < pwq->max_active)
 			pwq_activate_first_delayed(pwq);
@@ -1322,7 +1322,7 @@ fail:
  * spin_lock_irq(pool->lock).
  */
 static void insert_work(struct pool_workqueue *pwq, struct work_struct *work,
-			struct list_head *head, unsigned int extra_flags)
+			struct list_head *head, unsigned int extra_flags)	// 插入任务work到worker pool的worklist/delay list
 {
 	struct worker_pool *pool = pwq->pool;
 
@@ -1392,7 +1392,7 @@ static int wq_select_unbound_cpu(int cpu)
 }
 
 static void __queue_work(int cpu, struct workqueue_struct *wq,
-			 struct work_struct *work)
+			 struct work_struct *work)				// 把任务work放入workqueue wq，并选择一个cpu放入对应的workpool中
 {
 	struct pool_workqueue *pwq;
 	struct worker_pool *last_pool;
@@ -1477,18 +1477,18 @@ retry:
 	pwq->nr_in_flight[pwq->work_color]++;
 	work_flags = work_color_to_flags(pwq->work_color);
 
-	if (likely(pwq->nr_active < pwq->max_active)) {
+	if (likely(pwq->nr_active < pwq->max_active)) {				// 每个pool workqueue都有任务数量限制，如果没超过就放到对应的work pool的任务列表worklist中
 		trace_workqueue_activate_work(work);
 		pwq->nr_active++;
 		worklist = &pwq->pool->worklist;
 		if (list_empty(worklist))
 			pwq->pool->watchdog_ts = jiffies;
-	} else {
+	} else {								// 如果超过任务数量限制，放入delay链表中，等process_one_work执行结束会将delay list中的work刷到worklist中
 		work_flags |= WORK_STRUCT_DELAYED;
 		worklist = &pwq->delayed_works;
 	}
 
-	insert_work(pwq, work, worklist, work_flags);
+	insert_work(pwq, work, worklist, work_flags);				// 插入任务到指定work pool的worklist
 
 out:
 	spin_unlock(&pwq->pool->lock);
@@ -1903,7 +1903,7 @@ static void worker_detach_from_pool(struct worker *worker)
  * Return:
  * Pointer to the newly created worker.
  */
-static struct worker *create_worker(struct worker_pool *pool)
+static struct worker *create_worker(struct worker_pool *pool)			// 在worker pool中创建worker
 {
 	struct worker *worker = NULL;
 	int id = -1;
@@ -1963,7 +1963,7 @@ fail:
  * CONTEXT:
  * spin_lock_irq(pool->lock).
  */
-static void destroy_worker(struct worker *worker)
+static void destroy_worker(struct worker *worker)				// 销毁worker
 {
 	struct worker_pool *pool = worker->pool;
 
@@ -2008,7 +2008,7 @@ static void idle_worker_timeout(struct timer_list *t)
 	spin_unlock_irq(&pool->lock);
 }
 
-static void send_mayday(struct work_struct *work)
+static void send_mayday(struct work_struct *work)				// 将work所在的pwq放入mayday list，代表该pwq上的work list应当被对应workqueue的rescuer thread逐个处理
 {
 	struct pool_workqueue *pwq = get_work_pwq(work);
 	struct workqueue_struct *wq = pwq->wq;
@@ -2031,7 +2031,7 @@ static void send_mayday(struct work_struct *work)
 	}
 }
 
-static void pool_mayday_timeout(struct timer_list *t)
+static void pool_mayday_timeout(struct timer_list *t)				// mayday timer执行的函数，调用send_mayday
 {
 	struct worker_pool *pool = from_timer(pool, t, mayday_timer);
 	struct work_struct *work;
@@ -2074,7 +2074,7 @@ static void pool_mayday_timeout(struct timer_list *t)
  * multiple times.  Does GFP_KERNEL allocations.  Called only from
  * manager.
  */
-static void maybe_create_worker(struct worker_pool *pool)
+static void maybe_create_worker(struct worker_pool *pool)			// 是否应该创建新的worker，worker pool中的manger worker会调用，根据当前pool worker中的任务数量动态创建worker
 __releases(&pool->lock)
 __acquires(&pool->lock)
 {
@@ -2084,7 +2084,7 @@ restart:
 	/* if we don't make progress in MAYDAY_INITIAL_TIMEOUT, call for help */
 	mod_timer(&pool->mayday_timer, jiffies + MAYDAY_INITIAL_TIMEOUT);
 
-	while (true) {
+	while (true) {								// 如果create worker一直失败，会一直循环无法执行del_timer_sync，mayday timer就会触发将worker pool中的worklist的所有任务让rescuer thread执行
 		if (create_worker(pool) || !need_to_create_worker(pool))
 			break;
 
@@ -2162,7 +2162,7 @@ static bool manage_workers(struct worker *worker)
 static void process_one_work(struct worker *worker, struct work_struct *work)
 __releases(&pool->lock)
 __acquires(&pool->lock)
-{
+{										// 使用worker处理任务work
 	struct pool_workqueue *pwq = get_work_pwq(work);
 	struct worker_pool *pool = worker->pool;
 	bool cpu_intensive = pwq->wq->flags & WQ_CPU_INTENSIVE;
@@ -2198,7 +2198,7 @@ __acquires(&pool->lock)
 
 	/* claim and dequeue */
 	debug_work_deactivate(work);
-	hash_add(pool->busy_hash, &worker->hentry, (unsigned long)work);
+	hash_add(pool->busy_hash, &worker->hentry, (unsigned long)work);	// 当前worker状态设置
 	worker->current_work = work;
 	worker->current_func = work->func;
 	worker->current_pwq = pwq;
@@ -2266,7 +2266,7 @@ __acquires(&pool->lock)
 	 */
 	lockdep_invariant_state(true);
 	trace_workqueue_execute_start(work);
-	worker->current_func(work);
+	worker->current_func(work);						// 执行work
 	/*
 	 * While we must be careful to not use "work" after this, the trace
 	 * point will only record its address.
@@ -2304,11 +2304,11 @@ __acquires(&pool->lock)
 	worker->last_func = worker->current_func;
 
 	/* we're done with it, release */
-	hash_del(&worker->hentry);
+	hash_del(&worker->hentry);						// 重置当前worker状态
 	worker->current_work = NULL;
 	worker->current_func = NULL;
 	worker->current_pwq = NULL;
-	pwq_dec_nr_in_flight(pwq, work_color);
+	pwq_dec_nr_in_flight(pwq, work_color);					// 处理完后的pwq计数释放操作
 }
 
 /**
@@ -2354,7 +2354,7 @@ static void set_pf_worker(bool val)
  *
  * Return: 0
  */
-static int worker_thread(void *__worker)
+static int worker_thread(void *__worker)					// 普通worker的执行线程
 {
 	struct worker *worker = __worker;
 	struct worker_pool *pool = worker->pool;
@@ -2406,18 +2406,18 @@ recheck:
 	do {
 		struct work_struct *work =
 			list_first_entry(&pool->worklist,
-					 struct work_struct, entry);
+					 struct work_struct, entry);		// 从worker pool中的worklist中拿取一个work
 
 		pool->watchdog_ts = jiffies;
 
 		if (likely(!(*work_data_bits(work) & WORK_STRUCT_LINKED))) {
 			/* optimization path, not strictly necessary */
-			process_one_work(worker, work);
+			process_one_work(worker, work);				// 执行任务
 			if (unlikely(!list_empty(&worker->scheduled)))
 				process_scheduled_works(worker);
 		} else {
 			move_linked_works(work, &worker->scheduled, NULL);
-			process_scheduled_works(worker);
+			process_scheduled_works(worker);			// 执行任务
 		}
 	} while (keep_working(pool));
 
@@ -2458,7 +2458,7 @@ sleep:
  *
  * Return: 0
  */
-static int rescuer_thread(void *__rescuer)
+static int rescuer_thread(void *__rescuer)					// rescuer worker的执行线程
 {
 	struct worker *rescuer = __rescuer;
 	struct workqueue_struct *wq = rescuer->rescue_wq;
@@ -2488,7 +2488,7 @@ repeat:
 	/* see whether any pwq is asking for help */
 	spin_lock_irq(&wq_mayday_lock);
 
-	while (!list_empty(&wq->maydays)) {
+	while (!list_empty(&wq->maydays)) {					// 确认当前workqueue有需要营救的pwq
 		struct pool_workqueue *pwq = list_first_entry(&wq->maydays,
 					struct pool_workqueue, mayday_node);
 		struct worker_pool *pool = pwq->pool;
@@ -2496,7 +2496,7 @@ repeat:
 		bool first = true;
 
 		__set_current_state(TASK_RUNNING);
-		list_del_init(&pwq->mayday_node);
+		list_del_init(&pwq->mayday_node);				// 将pwq从mayday list删除
 
 		spin_unlock_irq(&wq_mayday_lock);
 
@@ -2509,7 +2509,7 @@ repeat:
 		 * process'em.
 		 */
 		WARN_ON_ONCE(!list_empty(scheduled));
-		list_for_each_entry_safe(work, n, &pool->worklist, entry) {
+		list_for_each_entry_safe(work, n, &pool->worklist, entry) {	// 将worker pool的worklist中对应pwq的任务移到rescuer worker的任务列表
 			if (get_work_pwq(work) == pwq) {
 				if (first)
 					pool->watchdog_ts = jiffies;
@@ -2518,7 +2518,7 @@ repeat:
 			first = false;
 		}
 
-		if (!list_empty(scheduled)) {
+		if (!list_empty(scheduled)) {					// 如果rescuer worker的任务列表中有work
 			process_scheduled_works(rescuer);
 
 			/*
@@ -2530,7 +2530,7 @@ repeat:
 			 * being used to relieve memory pressure, don't
 			 * incur MAYDAY_INTERVAL delay inbetween.
 			 */
-			if (need_to_create_worker(pool)) {
+			if (need_to_create_worker(pool)) {			// 创建worker失败，仍然可以将pwq重新放回mayday list
 				spin_lock(&wq_mayday_lock);
 				get_pwq(pwq);
 				list_move_tail(&pwq->mayday_node, &wq->maydays);
@@ -2759,7 +2759,7 @@ static bool flush_workqueue_prep_pwqs(struct workqueue_struct *wq,
  * This function sleeps until all work items which were queued on entry
  * have finished execution, but it is not livelocked by new incoming ones.
  */
-void flush_workqueue(struct workqueue_struct *wq)
+void flush_workqueue(struct workqueue_struct *wq)				// 保证workqueue中的任务全部被执行完
 {
 	struct wq_flusher this_flusher = {
 		.list = LIST_HEAD_INIT(this_flusher.list),
@@ -2921,7 +2921,7 @@ EXPORT_SYMBOL(flush_workqueue);
  * by the depth of chaining and should be relatively short.  Whine if it
  * takes too long.
  */
-void drain_workqueue(struct workqueue_struct *wq)
+void drain_workqueue(struct workqueue_struct *wq)				// 让workqueue中的所有任务被执行完
 {
 	unsigned int flush_cnt = 0;
 	struct pool_workqueue *pwq;
@@ -3407,7 +3407,7 @@ static bool wqattrs_equal(const struct workqueue_attrs *a,
  * inside @pool proper are initialized and put_unbound_pool() can be called
  * on @pool safely to release it.
  */
-static int init_worker_pool(struct worker_pool *pool)
+static int init_worker_pool(struct worker_pool *pool)				// 初始化worker pool
 {
 	spin_lock_init(&pool->lock);
 	pool->id = -1;
@@ -3727,7 +3727,7 @@ static void pwq_adjust_max_active(struct pool_workqueue *pwq)
 
 /* initialize newly alloced @pwq which is associated with @wq and @pool */
 static void init_pwq(struct pool_workqueue *pwq, struct workqueue_struct *wq,
-		     struct worker_pool *pool)
+		     struct worker_pool *pool)					// 初始化pool workqueue
 {
 	BUG_ON((unsigned long)pwq & WORK_STRUCT_FLAG_MASK);
 
@@ -4189,7 +4189,7 @@ static int wq_clamp_max_active(int max_active, unsigned int flags,
  * Workqueues which may be used during memory reclaim should have a rescuer
  * to guarantee forward progress.
  */
-static int init_rescuer(struct workqueue_struct *wq)
+static int init_rescuer(struct workqueue_struct *wq)				// 初始化rescue worker
 {
 	struct worker *rescuer;
 	int ret;
@@ -4219,7 +4219,7 @@ static int init_rescuer(struct workqueue_struct *wq)
 __printf(1, 4)
 struct workqueue_struct *alloc_workqueue(const char *fmt,
 					 unsigned int flags,
-					 int max_active, ...)
+					 int max_active, ...)			// 申请一个workqueue
 {
 	size_t tbl_size = 0;
 	va_list args;
@@ -4280,7 +4280,7 @@ struct workqueue_struct *alloc_workqueue(const char *fmt,
 	if (wq_online && init_rescuer(wq) < 0)
 		goto err_destroy;
 
-	if ((wq->flags & WQ_SYSFS) && workqueue_sysfs_register(wq))
+	if ((wq->flags & WQ_SYSFS) && workqueue_sysfs_register(wq))		// 如果有WQ_SYSFS标志，会在/sys/bus/workqueue/devices/下创建对应的文件
 		goto err_destroy;
 
 	/*
@@ -4320,7 +4320,7 @@ EXPORT_SYMBOL_GPL(alloc_workqueue);
  *
  * Safely destroy a workqueue. All work currently pending will be done first.
  */
-void destroy_workqueue(struct workqueue_struct *wq)
+void destroy_workqueue(struct workqueue_struct *wq)				// 销毁workqueue
 {
 	struct pool_workqueue *pwq;
 	int node;
@@ -4359,10 +4359,10 @@ void destroy_workqueue(struct workqueue_struct *wq)
 	list_del_rcu(&wq->list);
 	mutex_unlock(&wq_pool_mutex);
 
-	workqueue_sysfs_unregister(wq);
+	workqueue_sysfs_unregister(wq);						// 删除对应的sys file
 
 	if (wq->rescuer)
-		kthread_stop(wq->rescuer->task);
+		kthread_stop(wq->rescuer->task);				// 停止rescuer thread
 
 	if (!(wq->flags & WQ_UNBOUND)) {
 		wq_unregister_lockdep(wq);
@@ -4704,7 +4704,7 @@ static void show_pwq(struct pool_workqueue *pwq)
  * Called from a sysrq handler or try_to_freeze_tasks() and prints out
  * all busy workqueues and pools.
  */
-void show_workqueue_state(void)
+void show_workqueue_state(void)							// 打印所有workqueue状态
 {
 	struct workqueue_struct *wq;
 	struct worker_pool *pool;
